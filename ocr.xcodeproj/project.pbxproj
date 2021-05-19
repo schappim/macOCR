@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		84E9354E2651EEE400F03D17 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84E9354D2651EEE400F03D17 /* main.swift */; };
+		EB9A74F33E242DD28FE898F3 /* libPods-ocr.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8E154BE8F115995C78B97232 /* libPods-ocr.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -23,8 +24,11 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		19E4CACBB64156983BF4B2A0 /* Pods-ocr.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ocr.release.xcconfig"; path = "Target Support Files/Pods-ocr/Pods-ocr.release.xcconfig"; sourceTree = "<group>"; };
 		84E9354A2651EEE400F03D17 /* ocr */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = ocr; sourceTree = BUILT_PRODUCTS_DIR; };
 		84E9354D2651EEE400F03D17 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		8E154BE8F115995C78B97232 /* libPods-ocr.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ocr.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		CD7F1100A36C37937382E516 /* Pods-ocr.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ocr.debug.xcconfig"; path = "Target Support Files/Pods-ocr/Pods-ocr.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -32,17 +36,30 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EB9A74F33E242DD28FE898F3 /* libPods-ocr.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		53165E4C5B9A4E767F57E18A /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				CD7F1100A36C37937382E516 /* Pods-ocr.debug.xcconfig */,
+				19E4CACBB64156983BF4B2A0 /* Pods-ocr.release.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
+			sourceTree = "<group>";
+		};
 		84E935412651EEE400F03D17 = {
 			isa = PBXGroup;
 			children = (
 				84E9354C2651EEE400F03D17 /* ocr */,
 				84E9354B2651EEE400F03D17 /* Products */,
+				53165E4C5B9A4E767F57E18A /* Pods */,
+				B67C4D1AE1E95741D9FFFB85 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -62,6 +79,14 @@
 			path = ocr;
 			sourceTree = "<group>";
 		};
+		B67C4D1AE1E95741D9FFFB85 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				8E154BE8F115995C78B97232 /* libPods-ocr.a */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -69,6 +94,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 84E935512651EEE400F03D17 /* Build configuration list for PBXNativeTarget "ocr" */;
 			buildPhases = (
+				4BE8CF36EDCF69593D71FB05 /* [CP] Check Pods Manifest.lock */,
 				84E935462651EEE400F03D17 /* Sources */,
 				84E935472651EEE400F03D17 /* Frameworks */,
 				84E935482651EEE400F03D17 /* CopyFiles */,
@@ -113,6 +139,31 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4BE8CF36EDCF69593D71FB05 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-ocr-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		84E935462651EEE400F03D17 /* Sources */ = {
@@ -243,6 +294,7 @@
 		};
 		84E935522651EEE400F03D17 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = CD7F1100A36C37937382E516 /* Pods-ocr.debug.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = RWFD69KX56;
@@ -254,6 +306,7 @@
 		};
 		84E935532651EEE400F03D17 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 19E4CACBB64156983BF4B2A0 /* Pods-ocr.release.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = RWFD69KX56;
