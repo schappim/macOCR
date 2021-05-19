@@ -11,4 +11,6 @@ If you're still wondering "how does this work ?", I always find the .gif is the 
 ![How it works](https://files.littlebird.com.au/Screen-Recording-2021-05-20-08-42-33-pJWCLojgQFnwt4TVl6pKfizOtuqf.gif)
 
 
+## Installation
 
+Compile the code in this repo, or download a prebuilt binary ([Intel](https://files.littlebird.com.au/ocr-EPiReQzFJ5Xw9wElWMqbiBayYLVp.zip)) and put it on your path.
