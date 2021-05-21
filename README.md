@@ -10,7 +10,7 @@ An example Alfred.app workflow is [available here](https://files.littlebird.com.
 
 If you're still wondering "how does this work ?", I always find the .gif is the best way to clarify things: 
 
-![How it works](https://files.littlebird.com.au/Screen-Recording-2021-05-20-08-42-33-pJWCLojgQFnwt4TVl6pKfizOtuqf.gif)
+![How it works](https://files.littlebird.com.au/Screen-Recording-2021-05-21-13-27-27-FEPQtcuk6FFweb4QEk7Y1mXhsv8B.gif)
 
 
 ## Installation
