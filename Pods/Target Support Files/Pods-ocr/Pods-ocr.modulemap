@@ -1,6 +1,0 @@
-module Pods_ocr {
-  umbrella header "Pods-ocr-umbrella.h"
-
-  export *
-  module * { export * }
-}

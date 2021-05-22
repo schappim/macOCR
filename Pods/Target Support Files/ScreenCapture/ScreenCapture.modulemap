@@ -1,6 +1,0 @@
-module ScreenCapture {
-  umbrella header "ScreenCapture-umbrella.h"
-
-  export *
-  module * { export * }
-}

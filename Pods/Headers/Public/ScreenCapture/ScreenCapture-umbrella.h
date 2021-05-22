@@ -1,1 +1,0 @@
-../../../Target Support Files/ScreenCapture/ScreenCapture-umbrella.h
