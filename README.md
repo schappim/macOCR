@@ -38,9 +38,13 @@ When running the app the first time, you will likely be asked to allow the app a
 
 ![Enabling access to screen](https://files.littlebird.com.au/Shared-Image-2021-05-20-08-58-38.png)
 
+## OS Support
+
+This should run on Catalina and above.
+
 ## Who made this? 
 
-macOCR was made by Marcus Schappi. I create software ([and even hardware](https://chickcom.com/hardware)) to automate ecommerce, including: 
+macOCR was made by [Marcus Schappi](https://twitter.com/schappi). I create software ([and even hardware](https://chickcom.com/hardware)) to automate ecommerce, including: 
 
 * [Chick Commerce](https://chickcom.com/).
 * This [free Australia Post app on Shopify](https://apps.shopify.com/auspost-shipping).
