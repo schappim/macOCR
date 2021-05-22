@@ -1,40 +1,62 @@
 # macOCR
 
-macOCR is a command line app that runs OCR on text on your secreen.
+macOCR is a command line app that enables you to turn any text on your screen into text on your clipboard.
+When you envoke the `ocr` command, a "screen capture" like cursor is shown. 
+Any text within the bounds will be converted to text. 
 
-By default `ocr` prints the copied text to the terminal.
-You can also pass the `-c` flag to the `ocr` command to place the text on our clipboard. 
+You could invoke the app using the likes of [Alfred.app](https://www.alfredapp.com/), [Hammerspoon](http://www.hammerspoon.org/), Quicksilver etc.
 
-![How it works](https://github.com/adam-zethraeus/macOCR/blob/main/screen-recording.gif?raw=true)
+An example Alfred.app workflow is [available here](https://files.littlebird.com.au/OCR.alfredworkflow-aR9crGZYI92tYTa6Q5S1cRGr2rMc.zip).
+
+If you're still wondering "how does this work ?", I always find the .gif is the best way to clarify things: 
+
+![How it works](https://files.littlebird.com.au/Screen-Recording-2021-05-21-13-27-27-FEPQtcuk6FFweb4QEk7Y1mXhsv8B.gif)
+
 
 ## Installation
 
+Compile the code in this repo, or download a prebuilt binary ([Apple Silicon](https://files.littlebird.com.au/ocr.zip), [Intel](https://files.littlebird.com.au/ocr-EPiReQzFJ5Xw9wElWMqbiBayYLVp.zip)) and put it on your path.
+
+Apple Silicon Install:
+
 ```
-> git clone git@github.com:adam-zethraeus/macOCR.git
-> cd macOCR
-> swift build -c release
-> .build/release/ocr -h                                                                                      
-USAGE: ocr [--copy]
-
-OPTIONS:
-  -c, --copy              Copy OCR text to clipboard
-  -h, --help              Show help information.
-
-
-# You can place the binary in a folder in your $PATH
-> PATH=$PATH:~/bin
-> cp .build/release/ocr ~/bin
+curl -O https://files.littlebird.com.au/ocr.zip; 
+unzip ocr.zip;
+sudo cp ocr /usr/local/bin;
 ```
 
-When running the app the first time, you will be asked to allow the app access to your screen.
+Intel Install:
 
-Enable it in: `System Preferences > Security & Privacy > Privacy > Screen Recording`. 
+```
+curl -O https://files.littlebird.com.au/ocr-EPiReQzFJ5Xw9wElWMqbiBayYLVp.zip; 
+unzip ocr-EPiReQzFJ5Xw9wElWMqbiBayYLVp.zip;
+sudo cp ocr /usr/local/bin;
+```
+
+
+When running the app the first time, you will likely be asked to allow the app access to your screen.
+
+![Enabling access to screen](https://files.littlebird.com.au/Shared-Image-2021-05-20-08-58-38.png)
 
 ## OS Support
 
-The Swift package is enabled for Big Sur / macOS v11.
+This should run on Catalina and above.
+
+## Who made this? 
+
+macOCR was made by [Marcus Schappi](https://twitter.com/schappi). I create software ([and even hardware](https://chickcom.com/hardware)) to automate ecommerce, including: 
+
+* [Chick Commerce](https://chickcom.com/).
+* This [free Australia Post app on Shopify](https://apps.shopify.com/auspost-shipping).
+* [Script Ninja](https://apps.shopify.com/cockatoo) which enables you to create powerful scripts and tools to automate your Shopify store.
+
+## Thoughts on Sherlocking?
+
+Apple, please sherlock this software!
 
 ## MIT License 
+
+Copyright 2021 Marcus Schappi
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
