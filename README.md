@@ -4,11 +4,12 @@ macOCR is a command line app that enables you to turn any text on your screen in
 When you envoke the `ocr` command, a "screen capture" like cursor is shown. 
 Any text within the bounds will be converted to text. 
 
-You could invoke the app using the likes of [Alfred.app](https://www.alfredapp.com/), [Hammerspoon](http://www.hammerspoon.org/), [Quicksilver](https://qsapp.com/), [Raycast](https://raycast.com/) etc.
+You could invoke the app using the likes of [Alfred.app](https://www.alfredapp.com/), [LaunchBar](https://obdev.at/products/launchbar/index.html), [Hammerspoon](http://www.hammerspoon.org/), [Quicksilver](https://qsapp.com/), [Raycast](https://raycast.com/) etc.
 
 Examples: 
 - [Alfred.app Workflow](https://files.littlebird.com.au/OCR.alfredworkflow-aR9crGZYI92tYTa6Q5S1cRGr2rMc.zip)
 - [Raycast Script](https://gist.github.com/cheeaun/1405816e5ceb397cbc9028204f82dc98)
+- [LaunchBar Aciton](https://github.com/jsmjsm/macOCR-LaunchBar-Action)
 
 If you're still wondering "how does this work ?", I always find the .gif is the best way to clarify things: 
 
