@@ -1,16 +1,20 @@
 PODS:
+  - ArgumentParserKit (1.0.0)
   - ScreenCapture (0.1.0)
 
 DEPENDENCIES:
+  - ArgumentParserKit
   - ScreenCapture
 
 SPEC REPOS:
   trunk:
+    - ArgumentParserKit
     - ScreenCapture
 
 SPEC CHECKSUMS:
+  ArgumentParserKit: 99ceb746098d9f478a6cb9b01b38ce9ecab3122d
   ScreenCapture: 832436bf58779a3faefb3c48222b641b80a7d851
 
-PODFILE CHECKSUM: 7054880ecce3b050d6d5ac001c887a2b65b50ffd
+PODFILE CHECKSUM: 423eff66e097c4eb0fa56bb905ce9252e335b771
 
 COCOAPODS: 1.10.1
