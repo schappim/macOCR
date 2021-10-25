@@ -51,6 +51,7 @@ This should run on Catalina and above.
 
 macOCR was made by [Marcus Schappi](https://twitter.com/schappi). I create software ([and even hardware](https://chickcom.com/hardware)) to automate ecommerce, including: 
 
+* [USDZ.app](https://usdz.app). [Create Augmented Reality Object Captures with USDZ.app](https://usdz.app).
 * [Chick Commerce](https://chickcom.com/).
 * This [free Australia Post app on Shopify](https://apps.shopify.com/auspost-shipping).
 * [Script Ninja](https://apps.shopify.com/cockatoo) which enables you to create powerful scripts and tools to automate your Shopify store.
