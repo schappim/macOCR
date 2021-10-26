@@ -25,17 +25,17 @@ Compile the code in this repo, or download a prebuilt binary ([Apple Silicon](ht
 Apple Silicon Install:
 
 ```
-curl -O https://files.littlebird.com.au/ocr.zip; 
-unzip ocr.zip;
-sudo cp ocr /usr/local/bin;
+curl -O https://files.littlebird.com.au/ocr.zip
+unzip ocr.zip
+sudo cp ocr /usr/local/bin
 ```
 
 Intel Install:
 
 ```
-curl -O https://files.littlebird.com.au/ocr-EPiReQzFJ5Xw9wElWMqbiBayYLVp.zip; 
-unzip ocr-EPiReQzFJ5Xw9wElWMqbiBayYLVp.zip;
-sudo cp ocr /usr/local/bin;
+curl -O https://files.littlebird.com.au/ocr-EPiReQzFJ5Xw9wElWMqbiBayYLVp.zip
+unzip ocr-EPiReQzFJ5Xw9wElWMqbiBayYLVp.zip
+sudo cp ocr /usr/local/bin
 ```
 
 
