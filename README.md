@@ -25,7 +25,7 @@ Compile the code in this repo, or download a prebuilt binary ([Apple Silicon](ht
 Apple Silicon Install:
 
 ```
-curl -O https://files.littlebird.com.au/ocr.zip; 
+curl -O https://files.littlebird.com.au/ocr2.zip; 
 unzip ocr.zip;
 sudo cp ocr /usr/local/bin;
 ```
