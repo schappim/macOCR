@@ -11,7 +11,7 @@ Examples:
 - [Raycast Script](https://gist.github.com/cheeaun/1405816e5ceb397cbc9028204f82dc98)
 - [LaunchBar Aciton](https://github.com/jsmjsm/macOCR-LaunchBar-Action)
 
-An example Alfred.app workflow is [available here](https://files.littlebird.com.au/OCR.alfredworkflow-aR9crGZYI92tYTa6Q5S1cRGr2rMc.zip).
+An example Alfred.app workflow is [available here](https://files.littlebird.com.au/OCR2-ONrTkn.zip).
 
 If you're still wondering "how does this work ?", I always find the .gif is the best way to clarify things: 
 
