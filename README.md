@@ -7,7 +7,7 @@ Any text within the bounds will be converted to text.
 You could invoke the app using the likes of [Alfred.app](https://www.alfredapp.com/), [LaunchBar](https://obdev.at/products/launchbar/index.html), [Hammerspoon](http://www.hammerspoon.org/), [Quicksilver](https://qsapp.com/), [Raycast](https://raycast.com/) etc.
 
 Examples: 
-- [macOS Shortcut Workflow](https://www.icloud.com/shortcuts/7d8bf3ae412b4adb916a25163b39f594)
+- [macOS Shortcut Workflow](https://www.icloud.com/shortcuts/fa91687e481849d6a27ff873ec71599b)
 - [Alfred.app Workflow](https://files.littlebird.com.au/OCR2-ONrTkn.zip)
 - [Raycast Script](https://gist.github.com/cheeaun/1405816e5ceb397cbc9028204f82dc98)
 - [LaunchBar Aciton](https://github.com/jsmjsm/macOCR-LaunchBar-Action)
@@ -29,7 +29,7 @@ Apple Silicon Install (via Homebrew):
 brew install schappim/ocr/ocr
 ```
 
-Once installed, you can then use the [macOS Shortcut Workflow](https://www.icloud.com/shortcuts/7d8bf3ae412b4adb916a25163b39f594)
+Once installed, you can then use the [macOS Shortcut Workflow](https://www.icloud.com/shortcuts/fa91687e481849d6a27ff873ec71599b)
 
 Apple Silicon Install (via Curl):
 
