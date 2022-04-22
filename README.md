@@ -29,7 +29,7 @@ Apple Silicon Install (via Homebrew):
 brew install schappim/ocr/ocr
 ```
 
-Once installed, you can then use the [macOS Shortcut Workflow](https://www.icloud.com/shortcuts/fa91687e481849d6a27ff873ec71599b)
+Once installed, you can then use the [macOS Shortcut Workflow](https://www.icloud.com/shortcuts/fa91687e481849d6a27ff873ec71599b) (see below for details)
 
 Apple Silicon Install (via Curl):
 
@@ -51,6 +51,19 @@ sudo cp ocr /usr/local/bin;
 When running the app the first time, you will likely be asked to allow the app access to your screen.
 
 ![Enabling access to screen](https://files.littlebird.com.au/Shared-Image-2021-05-20-08-58-38.png)
+
+## Add as Shortcut Workflow (Mac Montery 12+)
+1. Open up [MacOS Shortcuts](https://www.icloud.com/shortcuts/fa91687e481849d6a27ff873ec71599b) available on MacOS 12+.
+2. Create new `Shortcut`
+3. Add `Run Shell script`
+4. Set input as `/usr/local/bin/ocr` (runs this app)
+5. Goto `Shorcut Details` 
+  
+<img width="300px" src="https://user-images.githubusercontent.com/11782590/164676495-3c07a73f-5254-47eb-a4ff-d6a943617954.png" alt="settings" />
+
+7. Set `Pin in menubar` as true ☑️
+
+![Kapture 2022-04-22 at 19 09 40](https://user-images.githubusercontent.com/11782590/164675564-e4e03c3c-7065-4083-9978-7fd316251b0e.gif)
 
 ## OS Support
 
