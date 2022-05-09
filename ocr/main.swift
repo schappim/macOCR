@@ -20,19 +20,21 @@ if #available(OSX 11, *) {
     bigSur = true;
 }
 
+// MARK: Helper functions
+
 func convertCIImageToCGImage(inputImage: CIImage) -> CGImage? {
     let context = CIContext(options: nil)
-    if let cgImage = context.createCGImage(inputImage, from: inputImage.extent) {
-        return cgImage
+    guard let cgImage = context.createCGImage(inputImage, from: inputImage.extent) else {
+        return nil
     }
-    return nil
+    return cgImage
 }
 
 func recognizeTextHandler(request: VNRequest, error: Error?) {
-    guard let observations =
-            request.results as? [VNRecognizedTextObservation] else {
+    guard let observations = request.results as? [VNRecognizedTextObservation] else {
         return
     }
+    
     let recognizedStrings = observations.compactMap { observation in
         // Return the string of the top VNRecognizedText instance.
         return observation.topCandidates(1).first?.string
@@ -45,60 +47,46 @@ func recognizeTextHandler(request: VNRequest, error: Error?) {
     let pasteboard = NSPasteboard.general
     pasteboard.declareTypes([.string], owner: nil)
     pasteboard.setString(joined, forType: .string)
+}
+
+func detectText(fileName : URL) {
+    guard let ciImage = CIImage(contentsOf: fileName) else { return }
+    guard let img = convertCIImageToCGImage(inputImage: ciImage) else { return}
+
+    // Create a new request to recognize text.
+    let request = VNRecognizeTextRequest(completionHandler: recognizeTextHandler)
+    request.recognitionLanguages = recognitionLanguages
     
-}
-
-func detectText(fileName : URL) -> [CIFeature]? {
-    if let ciImage = CIImage(contentsOf: fileName){
-        guard let img = convertCIImageToCGImage(inputImage: ciImage) else { return nil}
-      
+    do {
         let requestHandler = VNImageRequestHandler(cgImage: img)
-
-        // Create a new request to recognize text.
-        let request = VNRecognizeTextRequest(completionHandler: recognizeTextHandler)
-        request.recognitionLanguages = recognitionLanguages
-       
-        
-        do {
-            // Perform the text-recognition request.
-            try requestHandler.perform([request])
-        } catch {
-            print("Unable to perform the requests: \(error).")
-        }
-}
-    return nil
+        // Perform the text-recognition request.
+        try requestHandler.perform([request])
+    } catch {
+        print("Unable to perform the requests: \(error).")
+    }
 }
 
-
+// MARK: Start OCR...
 
 let inputURL = URL(fileURLWithPath: "/tmp/ocr.png")
-var recognitionLanguages = ["en-US"]
+var recognitionLanguages = ["zh-CN"]
 
 do {
-    
-    
     let arguments = Array(CommandLine.arguments.dropFirst())
-
     let parser = ArgumentParser(usage: "<options>", overview: "macOCR is a command line app that enables you to turn any text on your screen into text on your clipboard")
     
-    if(bigSur){
+    if (bigSur) {
         let languageOption = parser.add(option: "--language", shortName: "-l", kind: String.self, usage: "Set Language (Supports Big Sur and Above)")
-        
-        
         let parsedArguments = try parser.parse(arguments)
         let language = parsedArguments.get(languageOption)
         
-        if (language ?? "").isEmpty{
-            
-        }else{
-            recognitionLanguages.insert(language!, at: 0)
+        if let language = language, !language.isEmpty {
+            recognitionLanguages.insert(language, at: 0)
         }
     }
-
+    
     let _ = ScreenCapture.captureRegion(destination: "/tmp/ocr.png")
-
-    if let features = detectText(fileName : inputURL), !features.isEmpty{}
-
+    detectText(fileName : inputURL)
 } catch {
     // handle parsing error
 }
