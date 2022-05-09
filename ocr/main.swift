@@ -88,7 +88,7 @@ do {
     let _ = ScreenCapture.captureRegion(destination: "/tmp/ocr.png")
     detectText(fileName : inputURL)
 } catch {
-    // handle parsing error
+    print(error)
 }
 
 exit(EXIT_SUCCESS)
