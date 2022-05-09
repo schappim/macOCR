@@ -12,9 +12,11 @@ import Vision
 import ScreenCapture
 import ArgumentParserKit
 
+// MARK: Global varibles
 
 var joiner = " "
-var bigSur = false;
+var bigSur = false
+var recognitionLanguages = ["zh-CN"]
 
 if #available(OSX 11, *) {
     bigSur = true;
@@ -66,10 +68,7 @@ func detectText(fileName : URL) {
     }
 }
 
-// MARK: Start OCR...
-
-let inputURL = URL(fileURLWithPath: "/tmp/ocr.png")
-var recognitionLanguages = ["zh-CN"]
+// MARK: 🉑 Start OCR ...
 
 do {
     let arguments = Array(CommandLine.arguments.dropFirst())
@@ -85,6 +84,7 @@ do {
         }
     }
     
+    let inputURL = URL(fileURLWithPath: "/tmp/ocr.png")
     let _ = ScreenCapture.captureRegion(destination: "/tmp/ocr.png")
     detectText(fileName : inputURL)
 } catch {
