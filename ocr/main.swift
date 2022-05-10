@@ -26,16 +26,12 @@ if #available(OSX 11, *) {
 
 func convertCIImageToCGImage(inputImage: CIImage) -> CGImage? {
     let context = CIContext(options: nil)
-    guard let cgImage = context.createCGImage(inputImage, from: inputImage.extent) else {
-        return nil
-    }
+    guard let cgImage = context.createCGImage(inputImage, from: inputImage.extent) else { return nil }
     return cgImage
 }
 
 func recognizeTextHandler(request: VNRequest, error: Error?) {
-    guard let observations = request.results as? [VNRecognizedTextObservation] else {
-        return
-    }
+    guard let observations = request.results as? [VNRecognizedTextObservation] else { return }
     
     let recognizedStrings = observations.compactMap { observation in
         // Return the string of the top VNRecognizedText instance.
