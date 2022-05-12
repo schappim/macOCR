@@ -25,6 +25,8 @@
 
 /* Begin PBXFileReference section */
 		19E4CACBB64156983BF4B2A0 /* Pods-ocr.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ocr.release.xcconfig"; path = "Target Support Files/Pods-ocr/Pods-ocr.release.xcconfig"; sourceTree = "<group>"; };
+		3D84247926B70224002F57D8 /* DEVELOPMENT_TEAM.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = DEVELOPMENT_TEAM.xcconfig; sourceTree = "<group>"; };
+		3D84247A26B70224002F57D8 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
 		84E9354A2651EEE400F03D17 /* ocr */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = ocr; sourceTree = BUILT_PRODUCTS_DIR; };
 		84E9354D2651EEE400F03D17 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		8E154BE8F115995C78B97232 /* libPods-ocr.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ocr.a"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -43,13 +45,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		3D84247826B70224002F57D8 /* Xcode-config */ = {
+			isa = PBXGroup;
+			children = (
+				3D84247926B70224002F57D8 /* DEVELOPMENT_TEAM.xcconfig */,
+				3D84247A26B70224002F57D8 /* Shared.xcconfig */,
+			);
+			path = "Xcode-config";
+			sourceTree = "<group>";
+		};
 		53165E4C5B9A4E767F57E18A /* Pods */ = {
 			isa = PBXGroup;
 			children = (
 				CD7F1100A36C37937382E516 /* Pods-ocr.debug.xcconfig */,
 				19E4CACBB64156983BF4B2A0 /* Pods-ocr.release.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -60,6 +70,7 @@
 				84E9354B2651EEE400F03D17 /* Products */,
 				53165E4C5B9A4E767F57E18A /* Pods */,
 				B67C4D1AE1E95741D9FFFB85 /* Frameworks */,
+				3D84247826B70224002F57D8 /* Xcode-config */,
 			);
 			sourceTree = "<group>";
 		};
@@ -179,6 +190,7 @@
 /* Begin XCBuildConfiguration section */
 		84E9354F2651EEE400F03D17 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3D84247A26B70224002F57D8 /* Shared.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -240,6 +252,7 @@
 		};
 		84E935502651EEE400F03D17 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3D84247A26B70224002F57D8 /* Shared.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -297,7 +310,6 @@
 			baseConfigurationReference = CD7F1100A36C37937382E516 /* Pods-ocr.debug.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = RWFD69KX56;
 				ENABLE_HARDENED_RUNTIME = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -309,7 +321,6 @@
 			baseConfigurationReference = 19E4CACBB64156983BF4B2A0 /* Pods-ocr.release.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = RWFD69KX56;
 				ENABLE_HARDENED_RUNTIME = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
