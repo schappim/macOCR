@@ -16,7 +16,7 @@ import ArgumentParserKit
 var joiner = " "
 var bigSur = false;
 
-if #available(OSX 11, *) {
+if #available(macOS 11, *) {
     bigSur = true;
 }
 
