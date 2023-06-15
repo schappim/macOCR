@@ -56,7 +56,9 @@ When running the app the first time, you will likely be asked to allow the app a
 1. Open up [MacOS Shortcuts](https://www.icloud.com/shortcuts/fa91687e481849d6a27ff873ec71599b) available on MacOS 12+.
 2. Create new `Shortcut`
 3. Add `Run Shell script`
-4. Set input as `/usr/local/bin/ocr` (runs this app)
+4. Set script as one of these:
+  - `/opt/homebrew/bin/ocr` (if installed from brew)
+  - `/usr/local/bin/ocr` (if installed manually)
 5. Goto `Shorcut Details` 
   
 <img width="300px" src="https://user-images.githubusercontent.com/11782590/164676495-3c07a73f-5254-47eb-a4ff-d6a943617954.png" alt="settings" />
