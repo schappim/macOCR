@@ -83,7 +83,7 @@ do {
 // Start the screen capture
 let task = Process()
 task.launchPath = "/usr/sbin/screencapture"
-task.arguments = ["-i", "-r", inputURL.path]
+task.arguments = ["-i", "-r", "-x", inputURL.path]
 task.launch()
 task.waitUntilExit()
 
