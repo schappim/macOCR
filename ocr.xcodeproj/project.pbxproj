@@ -296,8 +296,8 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = CD7F1100A36C37937382E516 /* Pods-ocr.debug.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = RWFD69KX56;
+				//CODE_SIGN_STYLE = Automatic;
+				//DEVELOPMENT_TEAM = RWFD69KX56;
 				ENABLE_HARDENED_RUNTIME = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -308,8 +308,8 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 19E4CACBB64156983BF4B2A0 /* Pods-ocr.release.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = RWFD69KX56;
+				//CODE_SIGN_STYLE = Automatic;
+				//DEVELOPMENT_TEAM = RWFD69KX56;
 				ENABLE_HARDENED_RUNTIME = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;

@@ -1,17 +1,7 @@
-//
-//  main.swift
-//  OCR
-//
-//  Created by Marcus Schappi on 17/5/21, 11:36 am
-//
-
 import Foundation
-import CoreImage
 import Cocoa
 import Vision
-import ScreenCapture
 import ArgumentParserKit
-
 
 var joiner = " "
 var bigSur = false;
@@ -19,6 +9,9 @@ var bigSur = false;
 if #available(OSX 11, *) {
     bigSur = true;
 }
+
+var recognitionLanguages = ["en-US"]
+let inputURL = URL(fileURLWithPath: "/tmp/ocr.png")
 
 func convertCIImageToCGImage(inputImage: CIImage) -> CGImage? {
     let context = CIContext(options: nil)
@@ -31,14 +24,12 @@ func convertCIImageToCGImage(inputImage: CIImage) -> CGImage? {
 func recognizeTextHandler(request: VNRequest, error: Error?) {
     guard let observations =
             request.results as? [VNRecognizedTextObservation] else {
-        return
+        exit(EXIT_FAILURE)
     }
     let recognizedStrings = observations.compactMap { observation in
-        // Return the string of the top VNRecognizedText instance.
         return observation.topCandidates(1).first?.string
     }
     
-    // Process the recognized strings.
     let joined = recognizedStrings.joined(separator: joiner)
     print(joined)
     
@@ -46,61 +37,56 @@ func recognizeTextHandler(request: VNRequest, error: Error?) {
     pasteboard.declareTypes([.string], owner: nil)
     pasteboard.setString(joined, forType: .string)
     
+    exit(EXIT_SUCCESS)
 }
 
-func detectText(fileName : URL) -> [CIFeature]? {
+func detectText(fileName : URL) {
     if let ciImage = CIImage(contentsOf: fileName){
-        guard let img = convertCIImageToCGImage(inputImage: ciImage) else { return nil}
+        guard let img = convertCIImageToCGImage(inputImage: ciImage) else {
+            exit(EXIT_FAILURE)
+        }
       
         let requestHandler = VNImageRequestHandler(cgImage: img)
 
-        // Create a new request to recognize text.
         let request = VNRecognizeTextRequest(completionHandler: recognizeTextHandler)
         request.recognitionLanguages = recognitionLanguages
        
-        
         do {
-            // Perform the text-recognition request.
             try requestHandler.perform([request])
         } catch {
             print("Unable to perform the requests: \(error).")
+            exit(EXIT_FAILURE)
         }
+    } else {
+        print("Could not load image from \(fileName)")
+        exit(EXIT_FAILURE)
+    }
 }
-    return nil
-}
 
-
-
-let inputURL = URL(fileURLWithPath: "/tmp/ocr.png")
-var recognitionLanguages = ["en-US"]
-
+// Parse arguments
 do {
-    
-    
     let arguments = Array(CommandLine.arguments.dropFirst())
-
     let parser = ArgumentParser(usage: "<options>", overview: "macOCR is a command line app that enables you to turn any text on your screen into text on your clipboard")
     
     if(bigSur){
         let languageOption = parser.add(option: "--language", shortName: "-l", kind: String.self, usage: "Set Language (Supports Big Sur and Above)")
-        
-        
         let parsedArguments = try parser.parse(arguments)
-        let language = parsedArguments.get(languageOption)
-        
-        if (language ?? "").isEmpty{
-            
-        }else{
-            recognitionLanguages.insert(language!, at: 0)
+        if let language = parsedArguments.get(languageOption), !language.isEmpty {
+            recognitionLanguages.insert(language, at: 0)
         }
     }
-
-    let _ = ScreenCapture.captureRegion(destination: "/tmp/ocr.png")
-
-    if let features = detectText(fileName : inputURL), !features.isEmpty{}
-
 } catch {
-    // handle parsing error
+    print("Argument parsing error: \(error)")
+    exit(EXIT_FAILURE)
 }
 
-exit(EXIT_SUCCESS)
+// Start the screen capture
+let task = Process()
+task.launchPath = "/usr/sbin/screencapture"
+task.arguments = ["-i", "-r", inputURL.path]
+task.launch()
+task.waitUntilExit()
+
+detectText(fileName: inputURL)
+
+RunLoop.main.run() // Keep the process alive for the Vision request to complete
