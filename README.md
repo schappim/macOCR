@@ -21,9 +21,7 @@ If you're still wondering "how does this work?", I always find the .gif is the b
 
 ## Installation
 
-Compile the code in this repo, or download a prebuilt binary ([Apple Silicon](https://files.littlebird.com.au/ocr.zip), [Intel](https://files.littlebird.com.au/ocr-EPiReQzFJ5Xw9wElWMqbiBayYLVp.zip)) and put it on your path.
-
-Apple Silicon Install (via Homebrew):
+Install with Homebrew (recommended — it is also how `ocr --update` updates you later):
 
 ```
 brew install schappim/ocr/ocr
@@ -31,21 +29,28 @@ brew install schappim/ocr/ocr
 
 Once installed, you can then use the [macOS Shortcut Workflow](https://www.icloud.com/shortcuts/fa91687e481849d6a27ff873ec71599b) (see below for details)
 
-Apple Silicon Install (via Curl):
+Or download a prebuilt binary from the
+[latest release](https://github.com/schappim/macOCR/releases/latest).
+
+Apple Silicon:
 
 ```
-curl -O https://files.littlebird.com.au/ocr2.zip
-unzip ocr.zip
-sudo cp ocr /usr/local/bin
+curl -L -o macOCR-arm64.tar.gz \
+  https://github.com/schappim/macOCR/releases/latest/download/macOCR-arm64.tar.gz
+tar xzf macOCR-arm64.tar.gz
+sudo mv ocr /usr/local/bin/ocr
 ```
 
-Intel Install:
+Intel:
 
 ```
-curl -O https://files.littlebird.com.au/ocr-EPiReQzFJ5Xw9wElWMqbiBayYLVp.zip
-unzip ocr-EPiReQzFJ5Xw9wElWMqbiBayYLVp.zip
-sudo cp ocr /usr/local/bin
+curl -L -o macOCR-x86_64.tar.gz \
+  https://github.com/schappim/macOCR/releases/latest/download/macOCR-x86_64.tar.gz
+tar xzf macOCR-x86_64.tar.gz
+sudo mv ocr /usr/local/bin/ocr
 ```
+
+You can also compile the code in this repo and put the binary on your path.
 
 
 When running the app the first time, you will likely be asked to allow the app access to your screen.
@@ -74,6 +79,8 @@ The recognized text will be printed to stdout and copied to your clipboard.
 | `--rect <x,y,w,h>` | `-R` | Capture a specific screen region without interactive selection |
 | `--input <file>` | `-i` | Use an existing image file instead of screen capture |
 | `--save-image <path>` | `-s` | Save the captured screenshot to the specified path |
+| `--version` | `-v` | Print the installed macOCR version |
+| `--update` | | Check for a newer release and update via Homebrew |
 
 ### Examples
 
@@ -110,6 +117,37 @@ ocr --save-image ~/Desktop/capture.png
 # Capture region, save image, and use Chinese OCR
 ocr --rect 0,0,800,600 --save-image ~/Desktop/shot.png -l zh-Hans
 ```
+
+## Updating
+
+Not sure which version you have, or where you got it from? `ocr` will tell you:
+
+```bash
+ocr --version     # prints the version, architecture and this repository's URL
+ocr --help        # also lists how to update and where macOCR lives
+```
+
+To update, run:
+
+```bash
+ocr --update
+```
+
+This checks GitHub for the latest release and, if macOCR was installed with
+Homebrew, hands over to `brew upgrade schappim/ocr/ocr` to do the update. For a
+manual install it prints the exact commands to replace the binary where it
+actually lives — it does not install anything you did not ask for.
+
+If macOS has told you that macOCR is an Intel app, `--update` notices it is
+running under Rosetta and points you at the native Apple Silicon build even when
+the version itself is current.
+
+Both flags need macOCR 1.2.0 or later. Older copies have no `--help` at all — if
+`ocr --help` prints nothing useful, you have a pre-1.2.0 build and can update
+with the Homebrew or curl commands in [Installation](#installation).
+
+All releases are listed at
+[github.com/schappim/macOCR/releases](https://github.com/schappim/macOCR/releases).
 
 ### Supported Languages
 

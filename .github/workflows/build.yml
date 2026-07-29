@@ -17,6 +17,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check the tag matches the version in the source
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          source_version="$(sed -n 's/^let ocrVersion = "\(.*\)"$/\1/p' ocr/main.swift)"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$source_version" != "$tag_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match ocrVersion \"$source_version\" in ocr/main.swift."
+            echo "Bump the constant and the tag together, so --version and --update tell the truth."
+            exit 1
+          fi
+
       - name: Install CocoaPods
         run: pod install
 
@@ -33,11 +44,16 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
 
       - name: Prepare artifact
+        # Staged in dist/ because the repo already has an ocr/ source directory:
+        # copying the binary to ./ocr would land it inside that directory and
+        # ship the whole thing, source and all, instead of a bare executable.
         run: |
-          cp build/Build/Products/Release/ocr ocr
-          chmod +x ocr
-          file ocr
-          tar czf macOCR-${{ matrix.arch }}.tar.gz ocr
+          mkdir -p dist
+          cp build/Build/Products/Release/ocr dist/ocr
+          chmod +x dist/ocr
+          file dist/ocr
+          tar czf macOCR-${{ matrix.arch }}.tar.gz -C dist ocr
+          tar tzf macOCR-${{ matrix.arch }}.tar.gz
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
