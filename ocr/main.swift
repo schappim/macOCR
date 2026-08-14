@@ -24,7 +24,7 @@ if #available(OSX 11, *) {
 
 /// Bump this in step with the git tag that ships the release. The release job in
 /// .github/workflows/build.yml refuses to publish a tag that disagrees with it.
-let ocrVersion = "1.2.0"
+let ocrVersion = "1.3.0"
 let ocrRepositoryURL = "https://github.com/schappim/macOCR"
 let ocrReleasesURL = "https://github.com/schappim/macOCR/releases/latest"
 let ocrAllReleasesURL = "https://github.com/schappim/macOCR/releases"
@@ -81,27 +81,40 @@ func printHelp() {
     }
     optionLines += [
         "      --list-languages      List all supported OCR languages",
+        "  -b, --barcodes            Read only QR codes and barcodes, ignoring any text",
+        "      --no-barcodes         Read only text, ignoring any QR codes and barcodes",
+        "      --symbologies <list>  Only look for these symbologies, e.g. QR,EAN13",
+        "      --list-symbologies    List every barcode symbology this copy can read",
+        "      --json                Print results as JSON instead of plain text",
         "  -R, --rect <x,y,w,h>      Capture a specific region, skipping the interactive selection",
-        "  -i, --input <file>        OCR an existing image file instead of capturing the screen",
+        "  -i, --input <file>        Read an existing image file instead of capturing the screen",
         "  -s, --save-image <path>   Save the captured screenshot to <path>",
         "  -v, --version             Print the macOCR version",
         "      --update              Check for a newer version and update via Homebrew",
         "  -h, --help                Show this help",
     ]
 
-    var exampleLines = ["  ocr                       Select a region of the screen and OCR it"]
+    var exampleLines = ["  ocr                       Select a region and read the text and codes in it"]
     if bigSur {
         exampleLines.append("  ocr -l ja-JP              OCR using Japanese")
     }
     exampleLines += [
         "  ocr --list-languages      Show every language code this copy supports",
+        "  ocr -b                    Read only the QR codes and barcodes in the region",
+        "  ocr -b --symbologies QR   Read QR codes only, ignoring other barcodes",
+        "  ocr --no-barcodes         Read only the text, as macOCR did before 1.3.0",
+        "  ocr --json                Get the text, symbology and position of everything read",
         "  ocr --rect 100,200,500,300",
         "  ocr -i ~/Desktop/screenshot.png",
         "  ocr -s ~/Desktop/capture.png",
     ]
 
     var text = """
-    macOCR \(ocrVersion) - turn any text on your screen into text on your clipboard.
+    macOCR \(ocrVersion) - turn any text, QR code or barcode on your screen into
+    text on your clipboard.
+
+    By default macOCR reads both: any text in the region, plus the payload of any
+    QR code or barcode it finds, in the order they appear on screen.
 
     USAGE:
       ocr [options]
@@ -111,6 +124,11 @@ func printHelp() {
 
     EXAMPLES:
     \(exampleLines.joined(separator: "\n"))
+
+    EXIT STATUS:
+      With --barcodes, macOCR exits 1 when it finds no codes, so a script can tell
+      "nothing there" from a successful read. The other modes succeed on an empty
+      region. Any error exits 1 and explains itself on stderr.
 
 
     """
@@ -365,6 +383,7 @@ func performUpdate() -> Never {
 /// treating "--version" as the file name the parser will complain about.
 let ocrValueTakingOptions: Set<String> = [
     "-l", "--language",
+    "--symbologies",
     "-R", "--rect",
     "-i", "--input",
     "-s", "--save-image",
@@ -415,47 +434,254 @@ func convertCIImageToCGImage(inputImage: CIImage) -> CGImage? {
     return nil
 }
 
-func recognizeTextHandler(request: VNRequest, error: Error?) {
-    guard let observations =
-            request.results as? [VNRecognizedTextObservation] else {
-        return
+func loadImage(at url: URL) -> CGImage? {
+    guard let ciImage = CIImage(contentsOf: url) else { return nil }
+    return convertCIImageToCGImage(inputImage: ciImage)
+}
+
+// MARK: - Barcode symbologies
+
+/// Vision spells its symbologies "VNBarcodeSymbologyQR" and friends. The prefix is
+/// noise on a command line, so it is dropped on the way out and optional on the way in.
+let ocrSymbologyPrefix = "VNBarcodeSymbology"
+
+func symbologyName(_ symbology: VNBarcodeSymbology) -> String {
+    let raw = symbology.rawValue
+    guard raw.hasPrefix(ocrSymbologyPrefix) else { return raw }
+    return String(raw.dropFirst(ocrSymbologyPrefix.count))
+}
+
+/// Every symbology this copy of Vision can read. Before Monterey there is nothing
+/// to ask, but a fresh request comes configured with all of them, which is the
+/// same list by another route.
+func supportedSymbologies() -> [VNBarcodeSymbology] {
+    let request = VNDetectBarcodesRequest()
+    if #available(macOS 12.0, *), let symbologies = try? request.supportedSymbologies() {
+        return symbologies
     }
-    let recognizedStrings = observations.compactMap { observation in
-        // Return the string of the top VNRecognizedText instance.
-        return observation.topCandidates(1).first?.string
+    return request.symbologies
+}
+
+/// Case and punctuation are thrown away when matching names, so "QR", "qr",
+/// "gs1-databar" and "VNBarcodeSymbologyGS1DataBar" all land on the same symbology.
+func symbologyKey(_ name: String) -> String {
+    let compact = name.lowercased().filter { $0.isLetter || $0.isNumber }
+    let prefix = ocrSymbologyPrefix.lowercased()
+    return compact.hasPrefix(prefix) ? String(compact.dropFirst(prefix.count)) : compact
+}
+
+/// Turns a `--symbologies QR,EAN13` value into Vision symbologies, exiting with a
+/// usable error rather than silently scanning for everything when a name is wrong.
+func parseSymbologies(_ list: String) -> [VNBarcodeSymbology] {
+    var byKey: [String: VNBarcodeSymbology] = [:]
+    for symbology in supportedSymbologies() {
+        byKey[symbologyKey(symbology.rawValue)] = symbology
     }
-    
-    // Process the recognized strings.
-    let joined = recognizedStrings.joined(separator: joiner)
-    print(joined)
-    
+
+    var chosen: [VNBarcodeSymbology] = []
+    for name in list.split(separator: ",") {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { continue }
+        guard let symbology = byKey[symbologyKey(trimmed)] else {
+            printToStandardError("Error: \"\(trimmed)\" is not a barcode symbology this Mac can read.")
+            printToStandardError("Run `ocr --list-symbologies` to see the ones it can.")
+            exit(EXIT_FAILURE)
+        }
+        if !chosen.contains(symbology) { chosen.append(symbology) }
+    }
+
+    if chosen.isEmpty {
+        printToStandardError("Error: --symbologies needs at least one symbology, e.g. --symbologies QR,EAN13")
+        exit(EXIT_FAILURE)
+    }
+    return chosen
+}
+
+// MARK: - Output
+
+func boundingBoxRecord(_ box: CGRect) -> [String: Any] {
+    // Vision works in normalised coordinates with the origin at the bottom left.
+    return [
+        "x": Double(box.origin.x),
+        "y": Double(box.origin.y),
+        "width": Double(box.size.width),
+        "height": Double(box.size.height),
+    ]
+}
+
+/// VNConfidence is a Float, and widening one to Double turns 0.95 into
+/// 0.949999988079071 in the JSON. Four places is more precision than the number
+/// carries anyway, and it reads like something a person would write.
+func confidenceValue(_ confidence: VNConfidence) -> Double {
+    return (Double(confidence) * 10_000).rounded() / 10_000
+}
+
+func jsonString(for records: [[String: Any]]) -> String {
+    guard !records.isEmpty else { return "[]" }
+
+    let options: JSONSerialization.WritingOptions = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+    guard let data = try? JSONSerialization.data(withJSONObject: records, options: options),
+          let string = String(data: data, encoding: .utf8) else {
+        printToStandardError("Error: could not encode the results as JSON.")
+        exit(EXIT_FAILURE)
+    }
+    return string
+}
+
+func copyToClipboard(_ string: String) {
     let pasteboard = NSPasteboard.general
     pasteboard.declareTypes([.string], owner: nil)
-    pasteboard.setString(joined, forType: .string)
-    
+    pasteboard.setString(string, forType: .string)
 }
 
-func detectText(fileName : URL) -> [CIFeature]? {
-    if let ciImage = CIImage(contentsOf: fileName){
-        guard let img = convertCIImageToCGImage(inputImage: ciImage) else { return nil}
-      
-        let requestHandler = VNImageRequestHandler(cgImage: img)
+/// The whole point of macOCR is that what it read ends up on the clipboard, so the
+/// clipboard gets the plain payloads even when stdout is JSON for a script to parse.
+func emit(payloads: [String], records: [[String: Any]], asJSON: Bool) {
+    let joined = payloads.joined(separator: joiner)
+    print(asJSON ? jsonString(for: records) : joined)
 
-        // Create a new request to recognize text.
-        let request = VNRecognizeTextRequest(completionHandler: recognizeTextHandler)
-        request.recognitionLanguages = recognitionLanguages
-       
-        
-        do {
-            // Perform the text-recognition request.
-            try requestHandler.perform([request])
-        } catch {
-            print("Unable to perform the requests: \(error).")
+    // Nothing readable came back, so leave the clipboard holding whatever the user
+    // already had. A misjudged capture should cost them a second attempt, not
+    // whatever they had copied before it.
+    if !joined.isEmpty { copyToClipboard(joined) }
+}
+
+// MARK: - Recognition
+
+/// What macOCR is looking for. Vision can answer both questions about one image in
+/// a single pass, so reading codes as well as text costs a request rather than a
+/// second run, which is why `both` is the default.
+enum ScanMode {
+    case text
+    case barcodes
+    case both
+}
+
+/// One thing macOCR read: a line of text, or the payload of a barcode.
+struct ScanResult {
+    /// nil for a barcode carrying bytes that are not text, which have nothing to
+    /// contribute to the clipboard.
+    let payload: String?
+    let record: [String: Any]
+
+    /// Where this sits in reading order. Text keeps the order Vision returned it
+    /// in, and each code is given a fractional order so it slots in between the
+    /// lines it sits between on screen.
+    let order: Double
+    let y: Double
+    let x: Double
+}
+
+func scanResults(in image: CGImage, mode: ScanMode, symbologies: [VNBarcodeSymbology]?, asJSON: Bool) -> [ScanResult] {
+    var requests: [VNRequest] = []
+
+    let textRequest = VNRecognizeTextRequest()
+    textRequest.recognitionLanguages = recognitionLanguages
+    if mode != .barcodes { requests.append(textRequest) }
+
+    let barcodeRequest = VNDetectBarcodesRequest()
+    if let symbologies = symbologies { barcodeRequest.symbologies = symbologies }
+    if mode != .text { requests.append(barcodeRequest) }
+
+    do {
+        try VNImageRequestHandler(cgImage: image).perform(requests)
+    } catch {
+        printToStandardError("Error: unable to read the image: \(error.localizedDescription)")
+        exit(EXIT_FAILURE)
+    }
+
+    var results: [ScanResult] = []
+
+    let lines = textRequest.results ?? []
+    for (index, observation) in lines.enumerated() {
+        // Only the top candidate, which is what the clipboard wants.
+        guard let candidate = observation.topCandidates(1).first else { continue }
+        results.append(ScanResult(
+            payload: candidate.string,
+            record: [
+                "type": "text",
+                "text": candidate.string,
+                "confidence": confidenceValue(candidate.confidence),
+                "boundingBox": boundingBoxRecord(observation.boundingBox),
+            ],
+            order: Double(index),
+            y: Double(observation.boundingBox.midY),
+            x: Double(observation.boundingBox.minX)))
+    }
+
+    for observation in barcodeRequest.results ?? [] {
+        let box = observation.boundingBox
+
+        // Vision returns codes in no particular order, so place each one among the
+        // text by where it actually sits: half a step before the first line below
+        // it. Vision's origin is the bottom left, so a line with a larger midY is
+        // further up the image. Re-sorting the text itself would only make things
+        // worse on multi-column layouts, where Vision's own order already reads
+        // correctly.
+        let linesAbove = lines.filter { $0.boundingBox.midY > box.midY }.count
+
+        var record: [String: Any] = [
+            "type": "barcode",
+            "symbology": symbologyName(observation.symbology),
+            "confidence": confidenceValue(observation.confidence),
+            "boundingBox": boundingBoxRecord(box),
+        ]
+
+        let payload = observation.payloadStringValue
+        if let payload = payload {
+            record["payload"] = payload
+        } else {
+            // Some codes carry bytes that are not text at all. There is nothing to
+            // put on the clipboard for those, so say so rather than drop them
+            // silently, and hand the bytes over in JSON where they can be decoded.
+            var note = "Note: skipped a \(symbologyName(observation.symbology)) code whose payload is not text"
+            if #available(macOS 14.0, *), let data = observation.payloadData {
+                record["payloadBase64"] = data.base64EncodedString()
+                note += asJSON ? "; it is in the JSON as payloadBase64." : "; run again with --json to get it as base64."
+            } else {
+                note += "."
+            }
+            printToStandardError(note)
         }
-}
-    return nil
+
+        results.append(ScanResult(
+            payload: payload,
+            record: record,
+            order: Double(linesAbove) - 0.5,
+            y: Double(box.midY),
+            x: Double(box.minX)))
+    }
+
+    return results.sorted { first, second in
+        if first.order != second.order { return first.order < second.order }
+        // Centres within a percent of the image height count as the same row, so
+        // two codes side by side come out left to right instead of being ordered by
+        // whichever sits a hair higher. Rounding to a row is a plain function of y,
+        // so this stays a consistent ordering rather than a fuzzy comparison.
+        let firstRow = (first.y * 100).rounded(), secondRow = (second.y * 100).rounded()
+        if firstRow != secondRow { return firstRow > secondRow }
+        return first.x < second.x
+    }
 }
 
+func report(_ results: [ScanResult], mode: ScanMode, asJSON: Bool) -> Never {
+    let payloads = results.compactMap { $0.payload }
+    let records = results.map { $0.record }
+
+    // Only --barcodes treats finding nothing as a failure: it is the one mode that
+    // exists solely to find codes, so a script can branch on it. The default and
+    // --no-barcodes keep succeeding on a blank region, as macOCR always has.
+    if mode == .barcodes && records.isEmpty {
+        // An empty array still parses, so a script piping into jq gets something
+        // it can read; the exit status is what says nothing was found.
+        if asJSON { print("[]") }
+        printToStandardError("No barcodes found.")
+        exit(EXIT_FAILURE)
+    }
+
+    emit(payloads: payloads, records: records, asJSON: asJSON)
+    exit(EXIT_SUCCESS)
+}
 
 
 var recognitionLanguages = ["en-US"]
@@ -465,106 +691,150 @@ do {
 
     let arguments = Array(CommandLine.arguments.dropFirst())
 
-    let parser = ArgumentParser(usage: "<options>", overview: "macOCR is a command line app that enables you to turn any text on your screen into text on your clipboard")
+    let parser = ArgumentParser(usage: "<options>", overview: "macOCR is a command line app that enables you to turn any text, QR code or barcode on your screen into text on your clipboard. It reads both text and codes unless you narrow it down with --barcodes or --no-barcodes")
 
     let listLanguagesOption = parser.add(option: "--list-languages", kind: Bool.self, usage: "List supported OCR languages")
+    let barcodesOption = parser.add(option: "--barcodes", shortName: "-b", kind: Bool.self, usage: "Read only QR codes and barcodes, ignoring any text")
+    let noBarcodesOption = parser.add(option: "--no-barcodes", kind: Bool.self, usage: "Read only text, ignoring any QR codes and barcodes")
+    let symbologiesOption = parser.add(option: "--symbologies", kind: String.self, usage: "Only look for these symbologies, e.g. QR,EAN13")
+    let listSymbologiesOption = parser.add(option: "--list-symbologies", kind: Bool.self, usage: "List supported barcode symbologies")
+    let jsonOption = parser.add(option: "--json", kind: Bool.self, usage: "Print results as JSON instead of plain text")
     let rectOption = parser.add(option: "--rect", shortName: "-R", kind: String.self, usage: "Capture specific region: x,y,width,height (no interactive selection)")
     let inputFileOption = parser.add(option: "--input", shortName: "-i", kind: String.self, usage: "Use image file instead of screen capture")
     let saveImageOption = parser.add(option: "--save-image", shortName: "-s", kind: String.self, usage: "Save captured screenshot to specified path")
+
+    // --language is only registered on Big Sur and later, where Vision can
+    // actually recognise something other than English.
+    var languageOption: OptionArgument<String>? = nil
+    if bigSur {
+        languageOption = parser.add(option: "--language", shortName: "-l", kind: String.self, usage: "Set Language (Supports Big Sur and Above)")
+    }
 
     var rectValues: (x: Int, y: Int, w: Int, h: Int)? = nil
     var inputFile: String? = nil
     var saveImagePath: String? = nil
 
-    if(bigSur){
-        let languageOption = parser.add(option: "--language", shortName: "-l", kind: String.self, usage: "Set Language (Supports Big Sur and Above)")
+    let parsedArguments = try parser.parse(arguments)
 
+    // Check if user wants to list languages
+    if parsedArguments.get(listLanguagesOption) == true {
+        // Ask the same request the OCR path uses rather than a fixed revision.
+        // Pinning revision 2 here reported eight languages on Macs whose Vision
+        // recognises thirty, so --language accepted codes this flag never listed.
+        let request = VNRecognizeTextRequest()
 
-        let parsedArguments = try parser.parse(arguments)
+        var languages: [String] = []
+        if #available(macOS 12.0, *) {
+            languages = (try? request.supportedRecognitionLanguages()) ?? []
+        } else if #available(macOS 11.0, *) {
+            languages = (try? VNRecognizeTextRequest.supportedRecognitionLanguages(
+                for: .accurate, revision: request.revision)) ?? []
+        }
 
-        // Check if user wants to list languages
-        if parsedArguments.get(listLanguagesOption) == true {
-            if #available(macOS 11.0, *) {
-                let languages = try VNRecognizeTextRequest.supportedRecognitionLanguages(for: .accurate, revision: VNRecognizeTextRequestRevision2)
-                print("Supported languages (accurate):")
-                for lang in languages {
-                    print("  \(lang)")
-                }
-            } else {
-                print("en-US (language detection requires macOS 11.0+)")
-            }
+        guard !languages.isEmpty else {
+            print("en-US (choosing a language requires macOS 11.0 or later)")
             exit(EXIT_SUCCESS)
         }
 
-        // Parse rect option
-        if let rectString = parsedArguments.get(rectOption) {
-            let parts = rectString.split(separator: ",").compactMap { Int($0) }
-            if parts.count == 4 {
-                rectValues = (x: parts[0], y: parts[1], w: parts[2], h: parts[3])
-            } else {
-                print("Error: --rect requires format x,y,width,height (e.g., --rect 100,100,500,300)")
-                exit(EXIT_FAILURE)
-            }
+        print("Supported languages (accurate):")
+        for language in languages {
+            print("  \(language)")
         }
+        exit(EXIT_SUCCESS)
+    }
 
-        // Parse input file option
-        inputFile = parsedArguments.get(inputFileOption)
-
-        // Parse save image option
-        saveImagePath = parsedArguments.get(saveImageOption)
-
-        let language = parsedArguments.get(languageOption)
-
-        if (language ?? "").isEmpty{
-
-        }else{
-            recognitionLanguages.insert(language!, at: 0)
+    if parsedArguments.get(listSymbologiesOption) == true {
+        print("Supported barcode symbologies:")
+        for symbology in supportedSymbologies().map(symbologyName).sorted() {
+            print("  \(symbology)")
         }
-    } else {
-        let parsedArguments = try parser.parse(arguments)
-        if parsedArguments.get(listLanguagesOption) == true {
-            print("en-US (language detection requires macOS 11.0+)")
-            exit(EXIT_SUCCESS)
+        exit(EXIT_SUCCESS)
+    }
+
+    let outputJSON = parsedArguments.get(jsonOption) == true
+    let barcodesOnly = parsedArguments.get(barcodesOption) == true
+    let textOnly = parsedArguments.get(noBarcodesOption) == true
+
+    if barcodesOnly && textOnly {
+        printToStandardError("Error: --barcodes and --no-barcodes ask for opposite things; pick one.")
+        exit(EXIT_FAILURE)
+    }
+
+    // Reading both is the default: a screenshot with a QR code in it should give
+    // you the QR code without your having to know it was there beforehand.
+    let mode: ScanMode = barcodesOnly ? .barcodes : (textOnly ? .text : .both)
+
+    var symbologies: [VNBarcodeSymbology]? = nil
+    if let list = parsedArguments.get(symbologiesOption) {
+        guard mode != .text else {
+            printToStandardError("Error: --symbologies has nothing to narrow when --no-barcodes is set.")
+            exit(EXIT_FAILURE)
         }
+        symbologies = parseSymbologies(list)
+    }
 
-        // Parse rect option
-        if let rectString = parsedArguments.get(rectOption) {
-            let parts = rectString.split(separator: ",").compactMap { Int($0) }
-            if parts.count == 4 {
-                rectValues = (x: parts[0], y: parts[1], w: parts[2], h: parts[3])
-            } else {
-                print("Error: --rect requires format x,y,width,height (e.g., --rect 100,100,500,300)")
-                exit(EXIT_FAILURE)
-            }
+    // Parse rect option
+    if let rectString = parsedArguments.get(rectOption) {
+        let parts = rectString.split(separator: ",").compactMap { Int($0) }
+        if parts.count == 4 {
+            rectValues = (x: parts[0], y: parts[1], w: parts[2], h: parts[3])
+        } else {
+            printToStandardError("Error: --rect requires format x,y,width,height (e.g., --rect 100,100,500,300)")
+            exit(EXIT_FAILURE)
         }
+    }
 
-        // Parse input file option
-        inputFile = parsedArguments.get(inputFileOption)
+    // Parse input file option
+    inputFile = parsedArguments.get(inputFileOption)
 
-        // Parse save image option
-        saveImagePath = parsedArguments.get(saveImageOption)
+    // Parse save image option
+    saveImagePath = parsedArguments.get(saveImageOption)
+
+    if let languageOption = languageOption, let language = parsedArguments.get(languageOption), !language.isEmpty {
+        recognitionLanguages.insert(language, at: 0)
+    }
+
+    if inputFile != nil && saveImagePath != nil {
+        printToStandardError("Warning: --save-image has nothing to save when --input is used; ignoring it.")
     }
 
     // Determine the image to process
-    var imageURL: URL
+    let imageURL: URL
+    // Set only when macOCR took the screenshot itself, and so is the one that has
+    // to tidy it up afterwards.
+    var temporaryCapture: String? = nil
 
     if let input = inputFile {
         // Use provided image file
         let inputPath = (input as NSString).expandingTildeInPath
         imageURL = URL(fileURLWithPath: inputPath)
         if !FileManager.default.fileExists(atPath: imageURL.path) {
-            print("Error: Input file does not exist: \(input)")
+            printToStandardError("Error: Input file does not exist: \(input)")
             exit(EXIT_FAILURE)
         }
     } else {
-        // Capture screen region
-        let tempPath = "/tmp/ocr.png"
+        // The screenshot lands in this user's own temp directory rather than a
+        // shared one, under a name carrying this process's id so that two runs at
+        // once cannot read each other's capture. Any earlier file of the same name
+        // is cleared first, so cancelling the capture leaves nothing behind to be
+        // mistaken for a screenshot the user just took.
+        let tempPath = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("macOCR-capture-\(ProcessInfo.processInfo.processIdentifier).png")
+        try? FileManager.default.removeItem(atPath: tempPath)
+
         if let rect = rectValues {
             let _ = ScreenCapture.captureRect(destination: tempPath, x: rect.x, y: rect.y, width: rect.w, height: rect.h)
         } else {
             let _ = ScreenCapture.captureRegion(destination: tempPath)
         }
+
+        guard FileManager.default.fileExists(atPath: tempPath) else {
+            printToStandardError("No screenshot was taken; the capture was cancelled.")
+            exit(EXIT_FAILURE)
+        }
+
         imageURL = URL(fileURLWithPath: tempPath)
+        temporaryCapture = tempPath
 
         // Save image if requested
         if let savePath = saveImagePath {
@@ -572,12 +842,28 @@ do {
             do {
                 try FileManager.default.copyItem(atPath: tempPath, toPath: expandedPath)
             } catch {
-                print("Warning: Could not save image to \(savePath): \(error.localizedDescription)")
+                printToStandardError("Warning: Could not save image to \(savePath): \(error.localizedDescription)")
             }
         }
     }
 
-    if let features = detectText(fileName: imageURL), !features.isEmpty{}
+    let decoded = loadImage(at: imageURL)
+
+    // The screenshot has been decoded into memory, so the file has done its job.
+    // Leaving it on disk would mean every run of macOCR abandoned a copy of
+    // whatever was on screen at the time.
+    if let path = temporaryCapture {
+        try? FileManager.default.removeItem(atPath: path)
+    }
+
+    guard let image = decoded else {
+        printToStandardError("Error: could not read an image from \(imageURL.path)")
+        exit(EXIT_FAILURE)
+    }
+
+    report(scanResults(in: image, mode: mode, symbologies: symbologies, asJSON: outputJSON),
+           mode: mode,
+           asJSON: outputJSON)
 
 } catch {
     printToStandardError("Error: \(error)")
