@@ -26,7 +26,7 @@ if #available(OSX 11, *) {
 
 /// Bump this in step with the git tag that ships the release. The release job in
 /// .github/workflows/build.yml refuses to publish a tag that disagrees with it.
-let ocrVersion = "1.3.0"
+let ocrVersion = "1.4.0"
 let ocrRepositoryURL = "https://github.com/schappim/macOCR"
 let ocrReleasesURL = "https://github.com/schappim/macOCR/releases/latest"
 let ocrAllReleasesURL = "https://github.com/schappim/macOCR/releases"
