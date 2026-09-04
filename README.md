@@ -7,6 +7,10 @@ now on your clipboard as text. It works on things you cannot select: a screensho
 someone sent you, a video still, a PDF that will not copy, an error dialog, a
 conference badge, a parcel label.
 
+It does not have to be the screen. `ocr -c` reads the picture already on your
+clipboard, and `ocr -i statement.pdf` reads a PDF straight through, page by
+page.
+
 ![How it works](https://files.littlebird.com.au/Screen-Recording-2021-05-21-13-27-27-FEPQtcuk6FFweb4QEk7Y1mXhsv8B.gif)
 
 Everything happens on your Mac using Apple's Vision framework. No API keys, no
@@ -27,6 +31,7 @@ ocr
 - [Reading text](#reading-text)
 - [Languages](#languages)
 - [QR codes and barcodes](#qr-codes-and-barcodes)
+- [Reading something other than the screen](#reading-something-other-than-the-screen)
 - [JSON output](#json-output)
 - [Scripting with macOCR](#scripting-with-macocr)
 - [Recipes](#recipes)
@@ -116,8 +121,10 @@ have to know a code is there or ask for it.
 Five more things worth knowing on day one:
 
 ```bash
+ocr -c                          # read the screenshot you just copied
 ocr -l ja-JP                    # read Japanese instead of English
 ocr -i ~/Desktop/receipt.png    # read an image file, no screen capture
+ocr -i scan.pdf                 # read a whole PDF, page by page
 ocr --rect 0,0,800,600          # capture a fixed region, no dragging
 ocr -b                          # read only the QR codes and barcodes
 ocr --json                      # get structured output for scripts
@@ -139,14 +146,19 @@ ocr --json                      # get structured output for scripts
 | `--no-barcodes` | | Read only text, ignoring QR codes and barcodes |
 | `--symbologies <list>` | | Only look for these code types, for example `QR,EAN13` |
 | `--list-symbologies` | | List every barcode symbology this Mac can read |
-| **Input and output** | | |
+| **Where to read from** | | |
+| `--clipboard` | `-c` | Read the image already on the clipboard |
+| `--input <file>` | `-i` | Read an image or PDF. `-` reads it from standard input |
+| `--pages <list>` | | Which pages of a PDF to read, for example `1,4,7-9` |
+| `--dpi <n>` | | Resolution PDF pages are drawn at. Default `200` |
 | `--rect <x,y,w,h>` | `-R` | Capture a fixed region instead of selecting one by hand |
-| `--input <file>` | `-i` | Read an image file instead of capturing the screen |
+| **Output** | | |
 | `--save-image <path>` | `-s` | Also keep the screenshot that was captured |
 | `--json` | | Print structured JSON to stdout instead of plain text |
+| `--no-copy` | | Print the result without putting it on the clipboard |
 
-Whatever stdout looks like, **the clipboard always gets the plain text**. That is
-the point of macOCR.
+Whatever stdout looks like, **the clipboard gets the plain text**. That is the
+point of macOCR, and `--no-copy` is there for the scripts where it is not.
 
 ---
 
@@ -263,6 +275,102 @@ code silently. On macOS 14 and later the raw bytes are available as
 
 ---
 
+## Reading something other than the screen
+
+The screen is the default, not the only option. Everything else on this page
+works the same whichever of these you use: languages, barcodes, `--json`, exit
+status.
+
+### The clipboard
+
+```bash
+ocr -c
+```
+
+This is the one to reach for when someone sends you a screenshot. Copy the
+picture, run `ocr -c`, and the text is on your clipboard in place of the image.
+No saving it to the desktop first, no putting it back on screen to drag a box
+around.
+
+It reads a picture copied out of a browser, Slack, Preview or a screenshot taken
+with <kbd>⌃</kbd><kbd>⌘</kbd><kbd>⇧</kbd><kbd>4</kbd>, and it reads an image or
+PDF **file** copied in Finder, which puts a reference on the clipboard rather
+than any pixels.
+
+If there is no picture on the clipboard, macOCR says so and exits `1`.
+
+### An image or PDF file
+
+```bash
+ocr -i ./screenshot.png
+ocr -i ~/Documents/scan.jpg
+ocr -i ~/Documents/statement.pdf
+```
+
+Anything ImageIO can decode works: PNG, JPEG, TIFF, HEIC, GIF, BMP and so on.
+`~` is expanded for you. A photo carrying an EXIF orientation tag, which is
+almost every photo taken on a phone, is read the way up it was taken.
+
+### PDFs
+
+A PDF is read a page at a time, in order, and every page is run through the same
+recognition as any other image. That covers the scanned PDF with no text layer at
+all, and the one whose text is there but locked away behind a copy restriction.
+
+```bash
+ocr -i report.pdf                 # every page
+ocr -i report.pdf --pages 3       # one page
+ocr -i report.pdf --pages 2-5     # a range
+ocr -i report.pdf --pages 1,4,7-9 # any mixture, in the order you ask for
+```
+
+A range that runs off the end is clipped, so `--pages 1-999` means "all of it".
+A page number past the end is an error, because that is a typo rather than an
+intention.
+
+Pages are **drawn** rather than decoded, so there is a resolution to choose.
+The default of `200` dpi is where Vision stops making mistakes on ordinary body
+text. Small print or a poor scan may want more:
+
+```bash
+ocr -i faint-scan.pdf --dpi 400
+```
+
+Anything above about `600` is usually wasted time. A page too large to draw at
+the requested resolution is drawn smaller rather than refused, so a poster-sized
+page still reads.
+
+With `--json`, every record from a PDF carries the `page` it came from.
+
+### Standard input
+
+`-` means standard input, so a picture never has to touch the disk:
+
+```bash
+curl -sL https://example.com/label.png | ocr -i -
+pdftoppm -png -r 300 scan.pdf - | ocr -i -
+ocr -i - < screenshot.png
+```
+
+PDFs are recognised by their contents rather than their file name, so a PDF piped
+in this way is read as a PDF, and one saved as `invoice.png` still works.
+
+### Leaving the clipboard alone
+
+Reading a stack of files and putting every one of them on the clipboard in turn
+is rarely what anybody wanted:
+
+```bash
+for f in ~/Scans/*.png; do
+  ocr -i "$f" --no-copy > "${f%.png}.txt"
+done
+```
+
+`--no-copy` prints the result and leaves whatever the person at the keyboard had
+copied exactly where it was.
+
+---
+
 ## JSON output
 
 A bare payload does not tell you *which* code it came from, or where on screen it
@@ -311,6 +419,7 @@ Reading the fields:
 | `symbology` | `QR`, `EAN13`, `Code128` and so on. Barcode entries only |
 | `confidence` | 0 to 1, rounded to four places |
 | `boundingBox` | Position within the captured image |
+| `page` | 1-based page number. PDF input only |
 
 Bounding boxes use Vision's normalised coordinates: `0` to `1` across the
 captured image, with the origin at the **bottom** left rather than the top left.
@@ -319,6 +428,8 @@ code that runs off the edge of the image, and those boxes go slightly negative o
 past `1`.
 
 Entries come out in reading order, the same order the plain text output uses.
+For a PDF that means each page in reading order, and the pages in the order you
+asked for them.
 
 ---
 
@@ -338,16 +449,6 @@ are passed straight to `/usr/sbin/screencapture -R`. If the captured region is
 not where you expected, run it once with `--save-image` and look at the result to
 calibrate.
 
-### Read a file instead of the screen
-
-```bash
-ocr -i ./screenshot.png
-ocr -i ~/Documents/scan.jpg
-```
-
-Anything Core Image can decode works: PNG, JPEG, TIFF, HEIC and so on. `~` is
-expanded for you.
-
 ### Keep the screenshot
 
 ```bash
@@ -357,7 +458,8 @@ ocr --save-image ~/Desktop/capture.png
 Normally the screenshot is written to a private temporary file, decoded, and
 deleted immediately, so macOCR does not leave copies of your screen lying around.
 `--save-image` keeps a copy where you ask for it. It has nothing to save when
-combined with `--input`, and says so.
+combined with `--input` or `--clipboard`, and says so; `--rect` does the same,
+since neither of those captures anything.
 
 ### Exit status
 
@@ -421,8 +523,21 @@ done | uniq
 
 ```bash
 for f in ~/Scans/*.png; do
-  ocr -i "$f" --no-barcodes > "${f%.png}.txt"
+  ocr -i "$f" --no-barcodes --no-copy > "${f%.png}.txt"
 done
+```
+
+**Turn a scanned PDF into a text file, one file per page**
+
+```bash
+ocr -i scan.pdf --json --no-copy \
+  | jq -r 'group_by(.page)[] | "--- page \(.[0].page) ---", (.[] | .text // .payload)'
+```
+
+**Read the screenshot a colleague just sent you**
+
+```bash
+ocr -c            # after copying the image out of Slack, Mail or a browser
 ```
 
 **Stock-take: scan a shelf label straight into a lookup**
@@ -491,6 +606,11 @@ version itself is current.
 
 ### Version notes
 
+- **1.4.0** taught macOCR to read from somewhere other than the screen:
+  `--clipboard`, PDFs with `--pages` and `--dpi`, and standard input via
+  `-i -`. It also added `--no-copy`, and started honouring the EXIF orientation
+  of an image, which had been leaving `--json` bounding boxes sideways for
+  photos taken on a phone.
 - **1.3.0** added barcode and QR scanning, `--json`, `--symbologies` and
   `--list-symbologies`. It also stopped macOCR clearing your clipboard when it
   read nothing, and made `--list-languages` report the languages the recogniser
@@ -508,7 +628,8 @@ All releases are listed on the
 ## Requirements
 
 - macOS 10.15 (Catalina) or later
-- Screen Recording permission, for capturing the screen. Not needed for `--input`
+- Screen Recording permission, for capturing the screen. Not needed for
+  `--input`, `--clipboard` or `-i -`
 
 Feature availability by version:
 
