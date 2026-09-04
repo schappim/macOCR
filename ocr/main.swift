@@ -454,6 +454,50 @@ func decodeImage(from data: Data) -> ScanImage? {
     return ScanImage(image: image, orientation: imageOrientation(of: source))
 }
 
+// MARK: - Sources
+
+/// The pasteboard flavours worth trying, best first. An app that copies a picture
+/// usually offers several of these at once, and PDF leads because it is the one
+/// that is still resolution independent when it gets here.
+let ocrClipboardImageTypes: [NSPasteboard.PasteboardType] = [
+    NSPasteboard.PasteboardType("com.adobe.pdf"),
+    NSPasteboard.PasteboardType("public.png"),
+    NSPasteboard.PasteboardType("public.tiff"),
+    NSPasteboard.PasteboardType("public.jpeg"),
+    NSPasteboard.PasteboardType("public.heic"),
+]
+
+/// The picture on the clipboard, or nil when there is not one. Copying a file in
+/// Finder puts a URL there rather than any image data, so that is worth following
+/// as a fallback: it is the same picture by a different route.
+func clipboardData() -> Data? {
+    let pasteboard = NSPasteboard.general
+
+    for type in ocrClipboardImageTypes {
+        if let data = pasteboard.data(forType: type), !data.isEmpty { return data }
+    }
+
+    if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+       let url = urls.first(where: { $0.isFileURL }),
+       let data = try? Data(contentsOf: url), !data.isEmpty {
+        return data
+    }
+
+    return nil
+}
+
+/// Everything on standard input. Read in chunks so that piping a file in works
+/// the same as a slow producer at the other end of the pipe.
+func standardInputData() -> Data {
+    var data = Data()
+    while true {
+        let chunk = FileHandle.standardInput.availableData
+        if chunk.isEmpty { break }
+        data.append(chunk)
+    }
+    return data
+}
+
 // MARK: - Barcode symbologies
 
 /// Vision spells its symbologies "VNBarcodeSymbologyQR" and friends. The prefix is
@@ -551,14 +595,14 @@ func copyToClipboard(_ string: String) {
 
 /// The whole point of macOCR is that what it read ends up on the clipboard, so the
 /// clipboard gets the plain payloads even when stdout is JSON for a script to parse.
-func emit(payloads: [String], records: [[String: Any]], asJSON: Bool) {
+func emit(payloads: [String], records: [[String: Any]], asJSON: Bool, copyResult: Bool) {
     let joined = payloads.joined(separator: joiner)
     print(asJSON ? jsonString(for: records) : joined)
 
     // Nothing readable came back, so leave the clipboard holding whatever the user
     // already had. A misjudged capture should cost them a second attempt, not
     // whatever they had copied before it.
-    if !joined.isEmpty { copyToClipboard(joined) }
+    if copyResult && !joined.isEmpty { copyToClipboard(joined) }
 }
 
 // MARK: - Recognition
@@ -679,7 +723,7 @@ func scanResults(in scanImage: ScanImage, mode: ScanMode, symbologies: [VNBarcod
     }
 }
 
-func report(_ results: [ScanResult], mode: ScanMode, asJSON: Bool) -> Never {
+func report(_ results: [ScanResult], mode: ScanMode, asJSON: Bool, copyResult: Bool) -> Never {
     let payloads = results.compactMap { $0.payload }
     let records = results.map { $0.record }
 
@@ -694,7 +738,7 @@ func report(_ results: [ScanResult], mode: ScanMode, asJSON: Bool) -> Never {
         exit(EXIT_FAILURE)
     }
 
-    emit(payloads: payloads, records: records, asJSON: asJSON)
+    emit(payloads: payloads, records: records, asJSON: asJSON, copyResult: copyResult)
     exit(EXIT_SUCCESS)
 }
 
@@ -717,6 +761,8 @@ do {
     let rectOption = parser.add(option: "--rect", shortName: "-R", kind: String.self, usage: "Capture specific region: x,y,width,height (no interactive selection)")
     let inputFileOption = parser.add(option: "--input", shortName: "-i", kind: String.self, usage: "Use image file instead of screen capture")
     let saveImageOption = parser.add(option: "--save-image", shortName: "-s", kind: String.self, usage: "Save captured screenshot to specified path")
+    let clipboardOption = parser.add(option: "--clipboard", shortName: "-c", kind: Bool.self, usage: "Read the image already on the clipboard instead of capturing the screen")
+    let noCopyOption = parser.add(option: "--no-copy", kind: Bool.self, usage: "Print the result without putting it on the clipboard")
 
     // --language is only registered on Big Sur and later, where Vision can
     // actually recognise something other than English.
@@ -802,6 +848,14 @@ do {
     // Parse input file option
     inputFile = parsedArguments.get(inputFileOption)
 
+    let useClipboard = parsedArguments.get(clipboardOption) == true
+    let copyResult = parsedArguments.get(noCopyOption) != true
+
+    if useClipboard && inputFile != nil {
+        printToStandardError("Error: --clipboard and --input both name what to read; pick one.")
+        exit(EXIT_FAILURE)
+    }
+
     // Parse save image option
     saveImagePath = parsedArguments.get(saveImageOption)
 
@@ -809,26 +863,60 @@ do {
         recognitionLanguages.insert(language, at: 0)
     }
 
-    if inputFile != nil && saveImagePath != nil {
-        printToStandardError("Warning: --save-image has nothing to save when --input is used; ignoring it.")
+    // The capture-only options have nothing to act on once the image is coming
+    // from somewhere other than the screen. Saying so beats leaving someone to
+    // work out why --rect made no difference.
+    let capturingScreen = !useClipboard && inputFile == nil
+    if !capturingScreen {
+        let elsewhere = useClipboard ? "--clipboard" : "--input"
+        if saveImagePath != nil {
+            printToStandardError("Warning: --save-image has nothing to save when \(elsewhere) is used; ignoring it.")
+        }
+        if rectValues != nil {
+            printToStandardError("Warning: --rect only applies to a screen capture, which \(elsewhere) replaces; ignoring it.")
+        }
     }
 
-    // Determine the image to process
-    let imageURL: URL
+    // Determine what to read, and where to say it came from when it will not read.
+    let bytes: Data
+    let sourceDescription: String
     // Set only when macOCR took the screenshot itself, and so is the one that has
     // to tidy it up afterwards.
     var temporaryCapture: String? = nil
 
-    if let input = inputFile {
+    if useClipboard {
+        guard let data = clipboardData() else {
+            printToStandardError("Error: there is no image on the clipboard.")
+            printToStandardError("Copy a picture, a screenshot or an image file, then run `ocr --clipboard` again.")
+            exit(EXIT_FAILURE)
+        }
+        bytes = data
+        sourceDescription = "the clipboard"
+    } else if inputFile == "-" {
+        // "-" is the usual way to say standard input, so `pdftoppm ... | ocr -i -`
+        // and `curl ... | ocr -i -` work without a temporary file.
+        bytes = standardInputData()
+        guard !bytes.isEmpty else {
+            printToStandardError("Error: nothing arrived on standard input.")
+            exit(EXIT_FAILURE)
+        }
+        sourceDescription = "standard input"
+    } else if let input = inputFile {
         // Use provided image file
         let inputPath = (input as NSString).expandingTildeInPath
-        imageURL = URL(fileURLWithPath: inputPath)
+        let imageURL = URL(fileURLWithPath: inputPath)
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: imageURL.path, isDirectory: &isDirectory),
               !isDirectory.boolValue else {
             printToStandardError("Error: Input file does not exist: \(input)")
             exit(EXIT_FAILURE)
         }
+        guard let data = try? Data(contentsOf: imageURL) else {
+            printToStandardError("Error: could not read \(imageURL.path)")
+            exit(EXIT_FAILURE)
+        }
+        bytes = data
+        sourceDescription = imageURL.path
     } else {
         // The screenshot lands in this user's own temp directory rather than a
         // shared one, under a name carrying this process's id so that two runs at
@@ -850,8 +938,8 @@ do {
             exit(EXIT_FAILURE)
         }
 
-        imageURL = URL(fileURLWithPath: tempPath)
         temporaryCapture = tempPath
+        sourceDescription = tempPath
 
         // Save image if requested
         if let savePath = saveImagePath {
@@ -862,9 +950,14 @@ do {
                 printToStandardError("Warning: Could not save image to \(savePath): \(error.localizedDescription)")
             }
         }
-    }
 
-    let bytes = try? Data(contentsOf: imageURL)
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: tempPath)) else {
+            printToStandardError("Error: could not read the screenshot back from \(tempPath)")
+            try? FileManager.default.removeItem(atPath: tempPath)
+            exit(EXIT_FAILURE)
+        }
+        bytes = data
+    }
 
     // The screenshot has been read into memory, so the file has done its job.
     // Leaving it on disk would mean every run of macOCR abandoned a copy of
@@ -873,14 +966,15 @@ do {
         try? FileManager.default.removeItem(atPath: path)
     }
 
-    guard let bytes = bytes, let scanImage = decodeImage(from: bytes) else {
-        printToStandardError("Error: could not read an image from \(imageURL.path)")
+    guard let scanImage = decodeImage(from: bytes) else {
+        printToStandardError("Error: could not read an image from \(sourceDescription)")
         exit(EXIT_FAILURE)
     }
 
     report(scanResults(in: scanImage, mode: mode, symbologies: symbologies, asJSON: outputJSON),
            mode: mode,
-           asJSON: outputJSON)
+           asJSON: outputJSON,
+           copyResult: copyResult)
 
 } catch {
     printToStandardError("Error: \(error)")
