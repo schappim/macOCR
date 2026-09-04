@@ -642,20 +642,25 @@ let ocrClipboardImageTypes: [NSPasteboard.PasteboardType] = [
     NSPasteboard.PasteboardType("public.heic"),
 ]
 
-/// The picture on the clipboard, or nil when there is not one. Copying a file in
-/// Finder puts a URL there rather than any image data, so that is worth following
-/// as a fallback: it is the same picture by a different route.
+/// The picture on the clipboard, or nil when there is not one.
 func clipboardData() -> Data? {
     let pasteboard = NSPasteboard.general
 
-    for type in ocrClipboardImageTypes {
-        if let data = pasteboard.data(forType: type), !data.isEmpty { return data }
+    // A file copied in Finder arrives as a URL *and* as a picture of its icon, so
+    // the flavour list below would happily read the words off a document icon and
+    // report them as the file's contents. Follow the URL first, but only when what
+    // it points at is something macOCR can read: a copied .txt has a file URL too,
+    // and should fall through to whatever else is on the pasteboard rather than
+    // being read as an image and failing.
+    if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
+        for url in urls where url.isFileURL {
+            guard let data = try? Data(contentsOf: url), !data.isEmpty else { continue }
+            if looksLikePDF(data) || decodeImage(from: data) != nil { return data }
+        }
     }
 
-    if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
-       let url = urls.first(where: { $0.isFileURL }),
-       let data = try? Data(contentsOf: url), !data.isEmpty {
-        return data
+    for type in ocrClipboardImageTypes {
+        if let data = pasteboard.data(forType: type), !data.isEmpty { return data }
     }
 
     return nil
