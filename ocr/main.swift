@@ -548,9 +548,18 @@ func renderPDFPage(_ page: CGPDFPage, dpi: Int) -> CGImage? {
         scale *= (ocrMaximumPagePixels / pixels).squareRoot()
     }
 
-    let width = Int((Double(size.width) * scale).rounded())
-    let height = Int((Double(size.height) * scale).rounded())
-    guard width > 0, height > 0 else { return nil }
+    // Decided in Double first, because converting to Int is where this used to
+    // die. A PDF is free to declare a page 3.2e37 units wide, and the area cap
+    // above only bounds the two sides against each other: it happily leaves one of
+    // them astronomical and the other under a pixel. Int(3.1e22) traps, and took
+    // the whole process with it before anything had been printed.
+    let widthInPixels = (Double(size.width) * scale).rounded()
+    let heightInPixels = (Double(size.height) * scale).rounded()
+    guard widthInPixels.isFinite, heightInPixels.isFinite,
+          widthInPixels >= 3, heightInPixels >= 3 else { return nil }
+
+    let width = Int(widthInPixels)
+    let height = Int(heightInPixels)
 
     guard let context = CGContext(data: nil,
                                   width: width,
@@ -573,7 +582,13 @@ func renderPDFPage(_ page: CGPDFPage, dpi: Int) -> CGImage? {
                                                  rotate: 0,
                                                  preserveAspectRatio: true))
     context.drawPDFPage(page)
-    return context.makeImage()
+
+    // Check the bitmap that came back rather than the one that was asked for. At a
+    // low --dpi a page can round down to a couple of pixels, which Vision refuses
+    // outright; returning nil here sends it down the "could not be drawn" path
+    // instead, and the rest of the document survives.
+    guard let image = context.makeImage(), image.width > 2, image.height > 2 else { return nil }
+    return image
 }
 
 /// Draws each wanted page in turn and hands it straight over, so a long document
