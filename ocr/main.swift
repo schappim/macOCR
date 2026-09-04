@@ -576,7 +576,11 @@ func renderPDFPage(_ page: CGPDFPage, dpi: Int) -> CGImage? {
     return context.makeImage()
 }
 
-func pdfImages(from data: Data, pages: String?, dpi: Int) -> [ScanImage] {
+/// Draws each wanted page in turn and hands it straight over, so a long document
+/// costs one page of bitmap rather than all of them at once. Collecting them first
+/// put a 200 page statement at 3.2GB of resident memory before it printed a line,
+/// which is an out-of-memory kill on a small Mac and swap on a large one.
+func forEachPDFPage(in data: Data, pages: String?, dpi: Int, _ body: (ScanImage) -> Void) {
     guard let provider = CGDataProvider(data: data as CFData),
           let document = CGPDFDocument(provider) else {
         printToStandardError("Error: that looks like a PDF, but it could not be opened.")
@@ -596,37 +600,50 @@ func pdfImages(from data: Data, pages: String?, dpi: Int) -> [ScanImage] {
 
     let wanted = pages.map { parsePageSelection($0, pageCount: pageCount) } ?? Array(1...pageCount)
 
-    var images: [ScanImage] = []
+    var drawn = 0
     for number in wanted {
         guard let page = document.page(at: number), let image = renderPDFPage(page, dpi: dpi) else {
             printToStandardError("Warning: page \(number) could not be drawn; skipping it.")
             continue
         }
+        drawn += 1
         // The rotation is already in the pixels, so there is no orientation left
         // to tell Vision about.
-        images.append(ScanImage(image: image, orientation: .up, page: number))
+        body(ScanImage(image: image, orientation: .up, page: number))
     }
 
-    guard !images.isEmpty else {
+    guard drawn > 0 else {
         printToStandardError("Error: none of the pages asked for could be drawn.")
         exit(EXIT_FAILURE)
     }
-    return images
 }
 
-/// Everything macOCR is going to read out of one source: a single image, or one
-/// image per page for a PDF.
-func imagesToScan(from data: Data, describedAs description: String, pages: String?, dpi: Int) -> [ScanImage] {
-    if looksLikePDF(data) { return pdfImages(from: data, pages: pages, dpi: dpi) }
+/// Hands over everything macOCR is going to read out of one source: a single
+/// image, or one page at a time for a PDF.
+func forEachImageToScan(from data: Data,
+                        describedAs description: String,
+                        pages: String?,
+                        dpi: Int?,
+                        _ body: (ScanImage) -> Void) {
+    if looksLikePDF(data) {
+        forEachPDFPage(in: data, pages: pages, dpi: dpi ?? ocrDefaultPDFDPI, body)
+        return
+    }
 
+    // Neither of these has anything to act on outside a PDF, which is the only
+    // thing macOCR draws rather than decodes.
     if pages != nil {
         printToStandardError("Warning: --pages only applies to a PDF; ignoring it.")
     }
+    if dpi != nil {
+        printToStandardError("Warning: --dpi only applies to a PDF; ignoring it.")
+    }
+
     guard let image = decodeImage(from: data) else {
         printToStandardError("Error: could not read an image from \(description)")
         exit(EXIT_FAILURE)
     }
-    return [image]
+    body(image)
 }
 
 // MARK: - Sources
@@ -1048,9 +1065,11 @@ do {
 
     let pageSelection = parsedArguments.get(pagesOption)
 
-    let dpi = parsedArguments.get(dpiOption) ?? ocrDefaultPDFDPI
-    guard (36...1200).contains(dpi) else {
-        printToStandardError("Error: --dpi takes a resolution between 36 and 1200; \(dpi) is outside that.")
+    // Kept optional so that --dpi can say it has been ignored when the source is
+    // not a PDF, which passing the default straight through would hide.
+    let requestedDPI = parsedArguments.get(dpiOption)
+    if let requestedDPI = requestedDPI, !(36...1200).contains(requestedDPI) {
+        printToStandardError("Error: --dpi takes a resolution between 36 and 1200; \(requestedDPI) is outside that.")
         exit(EXIT_FAILURE)
     }
 
@@ -1164,12 +1183,14 @@ do {
         try? FileManager.default.removeItem(atPath: path)
     }
 
-    let images = imagesToScan(from: bytes, describedAs: sourceDescription, pages: pageSelection, dpi: dpi)
-
     // Each page is sorted into reading order on its own and the pages are then
     // laid end to end, so a document comes out in the order you would read it.
     var results: [ScanResult] = []
-    for scanImage in images {
+
+    forEachImageToScan(from: bytes,
+                       describedAs: sourceDescription,
+                       pages: pageSelection,
+                       dpi: requestedDPI) { scanImage in
         results += scanResults(in: scanImage, mode: mode, symbologies: symbologies, asJSON: outputJSON)
     }
 
