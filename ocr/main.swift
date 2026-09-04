@@ -857,7 +857,7 @@ struct ScanResult {
     let x: Double
 }
 
-func scanResults(in scanImage: ScanImage, mode: ScanMode, symbologies: [VNBarcodeSymbology]?, asJSON: Bool) -> [ScanResult] {
+func scanResults(in scanImage: ScanImage, mode: ScanMode, symbologies: [VNBarcodeSymbology]?, asJSON: Bool) throws -> [ScanResult] {
     // Set on every record from a PDF so that a script reading a document can tell
     // which page a line came off. Absent for anything that has no pages.
     let page = scanImage.page
@@ -872,12 +872,7 @@ func scanResults(in scanImage: ScanImage, mode: ScanMode, symbologies: [VNBarcod
     if let symbologies = symbologies { barcodeRequest.symbologies = symbologies }
     if mode != .text { requests.append(barcodeRequest) }
 
-    do {
-        try VNImageRequestHandler(cgImage: scanImage.image, orientation: scanImage.orientation).perform(requests)
-    } catch {
-        printToStandardError("Error: unable to read the image: \(error.localizedDescription)")
-        exit(EXIT_FAILURE)
-    }
+    try VNImageRequestHandler(cgImage: scanImage.image, orientation: scanImage.orientation).perform(requests)
 
     var results: [ScanResult] = []
 
@@ -1216,11 +1211,30 @@ do {
     // laid end to end, so a document comes out in the order you would read it.
     var results: [ScanResult] = []
 
+    var unreadablePages: [Int] = []
+
     forEachImageToScan(from: bytes,
                        describedAs: sourceDescription,
                        pages: pageSelection,
                        dpi: requestedDPI) { scanImage in
-        results += scanResults(in: scanImage, mode: mode, symbologies: symbologies, asJSON: outputJSON)
+        do {
+            results += try scanResults(in: scanImage, mode: mode, symbologies: symbologies, asJSON: outputJSON)
+        } catch {
+            // One page Vision will not look at is no reason to throw away the rest
+            // of a document. A single image that will not read is the whole of the
+            // answer, though, so that stays fatal and says the same thing it did.
+            guard let page = scanImage.page else {
+                printToStandardError("Error: unable to read the image: \(error.localizedDescription)")
+                exit(EXIT_FAILURE)
+            }
+            printToStandardError("Warning: page \(page) could not be read: \(error.localizedDescription)")
+            unreadablePages.append(page)
+        }
+    }
+
+    if results.isEmpty && !unreadablePages.isEmpty {
+        printToStandardError("Error: none of the pages could be read.")
+        exit(EXIT_FAILURE)
     }
 
     report(results, mode: mode, asJSON: outputJSON, copyResult: copyResult)
