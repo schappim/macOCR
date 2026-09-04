@@ -294,8 +294,9 @@ around.
 
 It reads a picture copied out of a browser, Slack, Preview or a screenshot taken
 with <kbd>⌃</kbd><kbd>⌘</kbd><kbd>⇧</kbd><kbd>4</kbd>, and it reads an image or
-PDF **file** copied in Finder, which puts a reference on the clipboard rather
-than any pixels.
+PDF **file** copied in Finder. Finder puts both a reference to the file and a
+picture of its icon on the clipboard; macOCR follows the reference, so you get
+the document rather than the words on its icon.
 
 If there is no picture on the clipboard, macOCR says so and exits `1`.
 
@@ -348,7 +349,7 @@ With `--json`, every record from a PDF carries the `page` it came from.
 
 ```bash
 curl -sL https://example.com/label.png | ocr -i -
-pdftoppm -png -r 300 scan.pdf - | ocr -i -
+cat scan.pdf | ocr -i -
 ocr -i - < screenshot.png
 ```
 
@@ -527,7 +528,7 @@ for f in ~/Scans/*.png; do
 done
 ```
 
-**Turn a scanned PDF into a text file, one file per page**
+**Read a scanned PDF with the pages marked**
 
 ```bash
 ocr -i scan.pdf --json --no-copy \
