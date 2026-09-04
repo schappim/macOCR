@@ -1,0 +1,19 @@
+# Dependabot keeps the pinned action versions in .github/workflows current.
+#
+# Only the GitHub Actions ecosystem is watched. The CocoaPods dependencies live
+# in Podfile.lock, which Dependabot cannot update, and both pods are vendored
+# under Pods/ so a build never resolves them from the network anyway.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+    groups:
+      # One pull request for the lot, rather than four that each have to be
+      # reviewed and merged on their own.
+      actions:
+        patterns:
+          - "*"
