@@ -685,13 +685,27 @@ func clipboardData() -> Data? {
 
 /// Everything on standard input. Read in chunks so that piping a file in works
 /// the same as a slow producer at the other end of the pipe.
+///
+/// This reads the descriptor rather than going through FileHandle, whose
+/// availableData raises an Objective-C exception on a read error. Nothing here can
+/// catch that, so `ocr -i -` on a descriptor that will not read aborted the process
+/// with SIGABRT instead of saying what went wrong.
 func standardInputData() -> Data {
     var data = Data()
+    var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+
     while true {
-        let chunk = FileHandle.standardInput.availableData
-        if chunk.isEmpty { break }
-        data.append(chunk)
+        let count = buffer.withUnsafeMutableBytes { read(STDIN_FILENO, $0.baseAddress, $0.count) }
+        if count == 0 { break }
+        if count < 0 {
+            // A signal arriving mid-read is not a failure, just a short one.
+            if errno == EINTR { continue }
+            printToStandardError("Error: could not read standard input: \(String(cString: strerror(errno)))")
+            exit(EXIT_FAILURE)
+        }
+        data.append(contentsOf: buffer[0..<count])
     }
+
     return data
 }
 
