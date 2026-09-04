@@ -7,6 +7,8 @@
 
 import Foundation
 import CoreImage
+import CoreGraphics
+import ImageIO
 import Cocoa
 import Vision
 import ScreenCapture
@@ -426,17 +428,30 @@ default:
     break
 }
 
-func convertCIImageToCGImage(inputImage: CIImage) -> CGImage? {
-    let context = CIContext(options: nil)
-    if let cgImage = context.createCGImage(inputImage, from: inputImage.extent) {
-        return cgImage
-    }
-    return nil
+// MARK: - Decoding
+
+/// One image macOCR is about to read, together with the way up it should be read.
+struct ScanImage {
+    let image: CGImage
+    let orientation: CGImagePropertyOrientation
 }
 
-func loadImage(at url: URL) -> CGImage? {
-    guard let ciImage = CIImage(contentsOf: url) else { return nil }
-    return convertCIImageToCGImage(inputImage: ciImage)
+/// A camera writes the sensor's pixels out unrotated and records which way up it
+/// was held in an EXIF tag. Decoding does not apply that tag, so a photo of a
+/// receipt taken in portrait arrives on its side and Vision reads little of it.
+/// The tag is handed to Vision rather than used to rotate the pixels, which is
+/// both cheaper and the coordinate space Vision reports its results in.
+func imageOrientation(of source: CGImageSource) -> CGImagePropertyOrientation {
+    guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+          let raw = properties[kCGImagePropertyOrientation] as? UInt32,
+          let orientation = CGImagePropertyOrientation(rawValue: raw) else { return .up }
+    return orientation
+}
+
+func decodeImage(from data: Data) -> ScanImage? {
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+          let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+    return ScanImage(image: image, orientation: imageOrientation(of: source))
 }
 
 // MARK: - Barcode symbologies
@@ -572,7 +587,7 @@ struct ScanResult {
     let x: Double
 }
 
-func scanResults(in image: CGImage, mode: ScanMode, symbologies: [VNBarcodeSymbology]?, asJSON: Bool) -> [ScanResult] {
+func scanResults(in scanImage: ScanImage, mode: ScanMode, symbologies: [VNBarcodeSymbology]?, asJSON: Bool) -> [ScanResult] {
     var requests: [VNRequest] = []
 
     let textRequest = VNRecognizeTextRequest()
@@ -584,7 +599,7 @@ func scanResults(in image: CGImage, mode: ScanMode, symbologies: [VNBarcodeSymbo
     if mode != .text { requests.append(barcodeRequest) }
 
     do {
-        try VNImageRequestHandler(cgImage: image).perform(requests)
+        try VNImageRequestHandler(cgImage: scanImage.image, orientation: scanImage.orientation).perform(requests)
     } catch {
         printToStandardError("Error: unable to read the image: \(error.localizedDescription)")
         exit(EXIT_FAILURE)
@@ -808,7 +823,9 @@ do {
         // Use provided image file
         let inputPath = (input as NSString).expandingTildeInPath
         imageURL = URL(fileURLWithPath: inputPath)
-        if !FileManager.default.fileExists(atPath: imageURL.path) {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: imageURL.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else {
             printToStandardError("Error: Input file does not exist: \(input)")
             exit(EXIT_FAILURE)
         }
@@ -847,21 +864,21 @@ do {
         }
     }
 
-    let decoded = loadImage(at: imageURL)
+    let bytes = try? Data(contentsOf: imageURL)
 
-    // The screenshot has been decoded into memory, so the file has done its job.
+    // The screenshot has been read into memory, so the file has done its job.
     // Leaving it on disk would mean every run of macOCR abandoned a copy of
     // whatever was on screen at the time.
     if let path = temporaryCapture {
         try? FileManager.default.removeItem(atPath: path)
     }
 
-    guard let image = decoded else {
+    guard let bytes = bytes, let scanImage = decodeImage(from: bytes) else {
         printToStandardError("Error: could not read an image from \(imageURL.path)")
         exit(EXIT_FAILURE)
     }
 
-    report(scanResults(in: image, mode: mode, symbologies: symbologies, asJSON: outputJSON),
+    report(scanResults(in: scanImage, mode: mode, symbologies: symbologies, asJSON: outputJSON),
            mode: mode,
            asJSON: outputJSON)
 
