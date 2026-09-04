@@ -1147,9 +1147,12 @@ do {
         let inputPath = (input as NSString).expandingTildeInPath
         let imageURL = URL(fileURLWithPath: inputPath)
         var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: imageURL.path, isDirectory: &isDirectory),
-              !isDirectory.boolValue else {
+        guard FileManager.default.fileExists(atPath: imageURL.path, isDirectory: &isDirectory) else {
             printToStandardError("Error: Input file does not exist: \(input)")
+            exit(EXIT_FAILURE)
+        }
+        guard !isDirectory.boolValue else {
+            printToStandardError("Error: \(input) is a directory; --input takes a single image or PDF.")
             exit(EXIT_FAILURE)
         }
         guard let data = try? Data(contentsOf: imageURL) else {
