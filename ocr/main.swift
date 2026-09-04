@@ -389,6 +389,8 @@ let ocrValueTakingOptions: Set<String> = [
     "-R", "--rect",
     "-i", "--input",
     "-s", "--save-image",
+    "--pages",
+    "--dpi",
 ]
 
 /// Returns the flag macOCR handles itself, or nil. Only tokens in an option
@@ -434,6 +436,8 @@ default:
 struct ScanImage {
     let image: CGImage
     let orientation: CGImagePropertyOrientation
+    /// 1-based page number, set only when the image is a page rendered out of a PDF.
+    let page: Int?
 }
 
 /// A camera writes the sensor's pixels out unrotated and records which way up it
@@ -451,7 +455,168 @@ func imageOrientation(of source: CGImageSource) -> CGImagePropertyOrientation {
 func decodeImage(from data: Data) -> ScanImage? {
     guard let source = CGImageSourceCreateWithData(data as CFData, nil),
           let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
-    return ScanImage(image: image, orientation: imageOrientation(of: source))
+    return ScanImage(image: image, orientation: imageOrientation(of: source), page: nil)
+}
+
+// MARK: - PDFs
+
+/// PDF pages are drawn rather than decoded, so macOCR has to pick a resolution.
+/// 200dpi is about where Vision stops making mistakes on a scan of ordinary body
+/// text, and well short of the sizes where drawing the page costs more than
+/// reading it does.
+let ocrDefaultPDFDPI = 200
+
+/// The most macOCR will draw one page into. An A0 poster at 200dpi is over sixty
+/// megapixels, which is a quarter of a gigabyte of bitmap and past the size Vision
+/// makes anything of. A page bigger than this is drawn smaller rather than refused.
+let ocrMaximumPagePixels = 30_000_000.0
+
+/// True when these bytes are a PDF rather than a picture. Reading the header
+/// beats trusting a file name: it is the only thing available for --clipboard and
+/// for standard input, and it is right about a PDF that someone saved as .png.
+func looksLikePDF(_ data: Data) -> Bool {
+    return data.starts(with: [0x25, 0x50, 0x44, 0x46]) // "%PDF"
+}
+
+/// Parses a page list such as "3", "2-5" or "1,4,7-9" into 1-based page numbers,
+/// in the order they were asked for and without repeats.
+func parsePageSelection(_ list: String, pageCount: Int) -> [Int] {
+    func fail(_ message: String) -> Never {
+        printToStandardError("Error: \(message)")
+        printToStandardError("--pages takes page numbers and ranges, e.g. --pages 1,4,7-9")
+        exit(EXIT_FAILURE)
+    }
+
+    var chosen: [Int] = []
+    for piece in list.split(separator: ",") {
+        let trimmed = piece.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { continue }
+
+        // Empty subsequences are kept so that "-3" and "3-" fail here rather than
+        // being read as the page they half look like.
+        let bounds = trimmed.split(separator: "-", omittingEmptySubsequences: false)
+            .map { Int($0.trimmingCharacters(in: .whitespaces)) }
+        guard bounds.count <= 2, !bounds.contains(where: { $0 == nil }) else {
+            fail("\"\(trimmed)\" is not a page or a range of pages.")
+        }
+
+        let first = bounds[0]!
+        let last = bounds.count == 2 ? bounds[1]! : first
+        guard first >= 1, last >= first else {
+            fail("\"\(trimmed)\" is not a page or a range of pages.")
+        }
+        guard first <= pageCount else {
+            fail("page \(first) is past the end of a \(pageCount) page document.")
+        }
+
+        // A range that runs off the end is clipped, so `--pages 1-999` means "all
+        // of it" rather than an error.
+        for page in first...min(last, pageCount) where !chosen.contains(page) {
+            chosen.append(page)
+        }
+    }
+
+    guard !chosen.isEmpty else { fail("--pages needs at least one page, e.g. --pages 1-3") }
+    return chosen
+}
+
+func renderPDFPage(_ page: CGPDFPage, dpi: Int) -> CGImage? {
+    let box = page.getBoxRect(.cropBox)
+    guard box.width > 0, box.height > 0 else { return nil }
+
+    // A page whose /Rotate is a quarter turn is drawn on its side, so the bitmap
+    // has to be the other way round for it to fit.
+    let rotation = ((Int(page.rotationAngle) % 360) + 360) % 360
+    let size = (rotation == 90 || rotation == 270)
+        ? CGSize(width: box.height, height: box.width)
+        : box.size
+
+    // PDF user space is 72 units to the inch, which is what makes this a dpi.
+    var scale = Double(dpi) / 72.0
+    let pixels = Double(size.width) * Double(size.height) * scale * scale
+    if pixels > ocrMaximumPagePixels {
+        scale *= (ocrMaximumPagePixels / pixels).squareRoot()
+    }
+
+    let width = Int((Double(size.width) * scale).rounded())
+    let height = Int((Double(size.height) * scale).rounded())
+    guard width > 0, height > 0 else { return nil }
+
+    guard let context = CGContext(data: nil,
+                                  width: width,
+                                  height: height,
+                                  bitsPerComponent: 8,
+                                  bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+
+    // A PDF page is transparent wherever nothing is drawn on it. Without this the
+    // text would end up black on black and Vision would find none of it.
+    context.setFillColor(gray: 1, alpha: 1)
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+
+    context.scaleBy(x: scale, y: scale)
+    // The drawing transform folds in the page's own rotation and the offset of a
+    // crop box that does not start at the origin.
+    context.concatenate(page.getDrawingTransform(.cropBox,
+                                                 rect: CGRect(origin: .zero, size: size),
+                                                 rotate: 0,
+                                                 preserveAspectRatio: true))
+    context.drawPDFPage(page)
+    return context.makeImage()
+}
+
+func pdfImages(from data: Data, pages: String?, dpi: Int) -> [ScanImage] {
+    guard let provider = CGDataProvider(data: data as CFData),
+          let document = CGPDFDocument(provider) else {
+        printToStandardError("Error: that looks like a PDF, but it could not be opened.")
+        exit(EXIT_FAILURE)
+    }
+
+    guard !document.isEncrypted || document.isUnlocked else {
+        printToStandardError("Error: that PDF is password protected, so there is nothing to read.")
+        exit(EXIT_FAILURE)
+    }
+
+    let pageCount = document.numberOfPages
+    guard pageCount > 0 else {
+        printToStandardError("Error: that PDF has no pages.")
+        exit(EXIT_FAILURE)
+    }
+
+    let wanted = pages.map { parsePageSelection($0, pageCount: pageCount) } ?? Array(1...pageCount)
+
+    var images: [ScanImage] = []
+    for number in wanted {
+        guard let page = document.page(at: number), let image = renderPDFPage(page, dpi: dpi) else {
+            printToStandardError("Warning: page \(number) could not be drawn; skipping it.")
+            continue
+        }
+        // The rotation is already in the pixels, so there is no orientation left
+        // to tell Vision about.
+        images.append(ScanImage(image: image, orientation: .up, page: number))
+    }
+
+    guard !images.isEmpty else {
+        printToStandardError("Error: none of the pages asked for could be drawn.")
+        exit(EXIT_FAILURE)
+    }
+    return images
+}
+
+/// Everything macOCR is going to read out of one source: a single image, or one
+/// image per page for a PDF.
+func imagesToScan(from data: Data, describedAs description: String, pages: String?, dpi: Int) -> [ScanImage] {
+    if looksLikePDF(data) { return pdfImages(from: data, pages: pages, dpi: dpi) }
+
+    if pages != nil {
+        printToStandardError("Warning: --pages only applies to a PDF; ignoring it.")
+    }
+    guard let image = decodeImage(from: data) else {
+        printToStandardError("Error: could not read an image from \(description)")
+        exit(EXIT_FAILURE)
+    }
+    return [image]
 }
 
 // MARK: - Sources
@@ -632,6 +797,10 @@ struct ScanResult {
 }
 
 func scanResults(in scanImage: ScanImage, mode: ScanMode, symbologies: [VNBarcodeSymbology]?, asJSON: Bool) -> [ScanResult] {
+    // Set on every record from a PDF so that a script reading a document can tell
+    // which page a line came off. Absent for anything that has no pages.
+    let page = scanImage.page
+
     var requests: [VNRequest] = []
 
     let textRequest = VNRecognizeTextRequest()
@@ -655,14 +824,17 @@ func scanResults(in scanImage: ScanImage, mode: ScanMode, symbologies: [VNBarcod
     for (index, observation) in lines.enumerated() {
         // Only the top candidate, which is what the clipboard wants.
         guard let candidate = observation.topCandidates(1).first else { continue }
+        var record: [String: Any] = [
+            "type": "text",
+            "text": candidate.string,
+            "confidence": confidenceValue(candidate.confidence),
+            "boundingBox": boundingBoxRecord(observation.boundingBox),
+        ]
+        if let page = page { record["page"] = page }
+
         results.append(ScanResult(
             payload: candidate.string,
-            record: [
-                "type": "text",
-                "text": candidate.string,
-                "confidence": confidenceValue(candidate.confidence),
-                "boundingBox": boundingBoxRecord(observation.boundingBox),
-            ],
+            record: record,
             order: Double(index),
             y: Double(observation.boundingBox.midY),
             x: Double(observation.boundingBox.minX)))
@@ -685,6 +857,7 @@ func scanResults(in scanImage: ScanImage, mode: ScanMode, symbologies: [VNBarcod
             "confidence": confidenceValue(observation.confidence),
             "boundingBox": boundingBoxRecord(box),
         ]
+        if let page = page { record["page"] = page }
 
         let payload = observation.payloadStringValue
         if let payload = payload {
@@ -763,6 +936,8 @@ do {
     let saveImageOption = parser.add(option: "--save-image", shortName: "-s", kind: String.self, usage: "Save captured screenshot to specified path")
     let clipboardOption = parser.add(option: "--clipboard", shortName: "-c", kind: Bool.self, usage: "Read the image already on the clipboard instead of capturing the screen")
     let noCopyOption = parser.add(option: "--no-copy", kind: Bool.self, usage: "Print the result without putting it on the clipboard")
+    let pagesOption = parser.add(option: "--pages", kind: String.self, usage: "Which pages of a PDF to read, e.g. 1,4,7-9")
+    let dpiOption = parser.add(option: "--dpi", kind: Int.self, usage: "Resolution PDF pages are drawn at (default \(ocrDefaultPDFDPI))")
 
     // --language is only registered on Big Sur and later, where Vision can
     // actually recognise something other than English.
@@ -853,6 +1028,14 @@ do {
 
     if useClipboard && inputFile != nil {
         printToStandardError("Error: --clipboard and --input both name what to read; pick one.")
+        exit(EXIT_FAILURE)
+    }
+
+    let pageSelection = parsedArguments.get(pagesOption)
+
+    let dpi = parsedArguments.get(dpiOption) ?? ocrDefaultPDFDPI
+    guard (36...1200).contains(dpi) else {
+        printToStandardError("Error: --dpi takes a resolution between 36 and 1200; \(dpi) is outside that.")
         exit(EXIT_FAILURE)
     }
 
@@ -966,15 +1149,16 @@ do {
         try? FileManager.default.removeItem(atPath: path)
     }
 
-    guard let scanImage = decodeImage(from: bytes) else {
-        printToStandardError("Error: could not read an image from \(sourceDescription)")
-        exit(EXIT_FAILURE)
+    let images = imagesToScan(from: bytes, describedAs: sourceDescription, pages: pageSelection, dpi: dpi)
+
+    // Each page is sorted into reading order on its own and the pages are then
+    // laid end to end, so a document comes out in the order you would read it.
+    var results: [ScanResult] = []
+    for scanImage in images {
+        results += scanResults(in: scanImage, mode: mode, symbologies: symbologies, asJSON: outputJSON)
     }
 
-    report(scanResults(in: scanImage, mode: mode, symbologies: symbologies, asJSON: outputJSON),
-           mode: mode,
-           asJSON: outputJSON,
-           copyResult: copyResult)
+    report(results, mode: mode, asJSON: outputJSON, copyResult: copyResult)
 
 } catch {
     printToStandardError("Error: \(error)")
