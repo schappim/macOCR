@@ -15,7 +15,7 @@ jobs:
         arch: [x86_64, arm64]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check the tag matches the version in the source
         if: startsWith(github.ref, 'refs/tags/v')
@@ -56,7 +56,7 @@ jobs:
           tar tzf macOCR-${{ matrix.arch }}.tar.gz
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macOCR-${{ matrix.arch }}
           path: macOCR-${{ matrix.arch }}.tar.gz
@@ -68,12 +68,12 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             macOCR-x86_64.tar.gz
