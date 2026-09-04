@@ -59,6 +59,17 @@ let ocrIsTranslated: Bool = {
 /// to be sent to the arm64 build, not handed the Intel one again.
 let ocrDownloadArch = ocrIsTranslated ? "arm64" : ocrBinaryArch
 
+/// PDF pages are drawn rather than decoded, so macOCR has to pick a resolution.
+/// 200dpi is about where Vision stops making mistakes on a scan of ordinary body
+/// text, and well short of the sizes where drawing the page costs more than
+/// reading it does.
+let ocrDefaultPDFDPI = 200
+
+/// The most macOCR will draw one page into. An A0 poster at 200dpi is over sixty
+/// megapixels, which is a quarter of a gigabyte of bitmap and past the size Vision
+/// makes anything of. A page bigger than this is drawn smaller rather than refused.
+let ocrMaximumPagePixels = 30_000_000.0
+
 func printToStandardError(_ message: String) {
     if let data = (message + "\n").data(using: .utf8) {
         FileHandle.standardError.write(data)
@@ -88,9 +99,14 @@ func printHelp() {
         "      --symbologies <list>  Only look for these symbologies, e.g. QR,EAN13",
         "      --list-symbologies    List every barcode symbology this copy can read",
         "      --json                Print results as JSON instead of plain text",
+        "  -c, --clipboard           Read the image already on the clipboard",
+        "  -i, --input <file>        Read an image or PDF instead of capturing the screen",
+        "                            (\"-\" reads it from standard input)",
+        "      --pages <list>        Which pages of a PDF to read, e.g. 1,4,7-9",
+        "      --dpi <n>             Resolution PDF pages are drawn at (default \(ocrDefaultPDFDPI))",
         "  -R, --rect <x,y,w,h>      Capture a specific region, skipping the interactive selection",
-        "  -i, --input <file>        Read an existing image file instead of capturing the screen",
         "  -s, --save-image <path>   Save the captured screenshot to <path>",
+        "      --no-copy             Print the result without putting it on the clipboard",
         "  -v, --version             Print the macOCR version",
         "      --update              Check for a newer version and update via Homebrew",
         "  -h, --help                Show this help",
@@ -106,6 +122,10 @@ func printHelp() {
         "  ocr -b --symbologies QR   Read QR codes only, ignoring other barcodes",
         "  ocr --no-barcodes         Read only the text, as macOCR did before 1.3.0",
         "  ocr --json                Get the text, symbology and position of everything read",
+        "  ocr -c                    Read the screenshot you just copied",
+        "  ocr -i scan.pdf           Read every page of a PDF",
+        "  ocr -i scan.pdf --pages 2-4",
+        "  curl -sL example.com/label.png | ocr -i -",
         "  ocr --rect 100,200,500,300",
         "  ocr -i ~/Desktop/screenshot.png",
         "  ocr -s ~/Desktop/capture.png",
@@ -116,7 +136,8 @@ func printHelp() {
     text on your clipboard.
 
     By default macOCR reads both: any text in the region, plus the payload of any
-    QR code or barcode it finds, in the order they appear on screen.
+    QR code or barcode it finds, in the order they appear on screen. It can read
+    the same things out of the clipboard, an image file, a PDF or standard input.
 
     USAGE:
       ocr [options]
@@ -459,17 +480,6 @@ func decodeImage(from data: Data) -> ScanImage? {
 }
 
 // MARK: - PDFs
-
-/// PDF pages are drawn rather than decoded, so macOCR has to pick a resolution.
-/// 200dpi is about where Vision stops making mistakes on a scan of ordinary body
-/// text, and well short of the sizes where drawing the page costs more than
-/// reading it does.
-let ocrDefaultPDFDPI = 200
-
-/// The most macOCR will draw one page into. An A0 poster at 200dpi is over sixty
-/// megapixels, which is a quarter of a gigabyte of bitmap and past the size Vision
-/// makes anything of. A page bigger than this is drawn smaller rather than refused.
-let ocrMaximumPagePixels = 30_000_000.0
 
 /// True when these bytes are a PDF rather than a picture. Reading the header
 /// beats trusting a file name: it is the only thing available for --clipboard and
@@ -923,7 +933,7 @@ do {
 
     let arguments = Array(CommandLine.arguments.dropFirst())
 
-    let parser = ArgumentParser(usage: "<options>", overview: "macOCR is a command line app that enables you to turn any text, QR code or barcode on your screen into text on your clipboard. It reads both text and codes unless you narrow it down with --barcodes or --no-barcodes")
+    let parser = ArgumentParser(usage: "<options>", overview: "macOCR is a command line app that enables you to turn any text, QR code or barcode on your screen into text on your clipboard. It reads both text and codes unless you narrow it down with --barcodes or --no-barcodes, and reads from the clipboard, an image file, a PDF or standard input as well as from the screen")
 
     let listLanguagesOption = parser.add(option: "--list-languages", kind: Bool.self, usage: "List supported OCR languages")
     let barcodesOption = parser.add(option: "--barcodes", shortName: "-b", kind: Bool.self, usage: "Read only QR codes and barcodes, ignoring any text")
@@ -932,7 +942,7 @@ do {
     let listSymbologiesOption = parser.add(option: "--list-symbologies", kind: Bool.self, usage: "List supported barcode symbologies")
     let jsonOption = parser.add(option: "--json", kind: Bool.self, usage: "Print results as JSON instead of plain text")
     let rectOption = parser.add(option: "--rect", shortName: "-R", kind: String.self, usage: "Capture specific region: x,y,width,height (no interactive selection)")
-    let inputFileOption = parser.add(option: "--input", shortName: "-i", kind: String.self, usage: "Use image file instead of screen capture")
+    let inputFileOption = parser.add(option: "--input", shortName: "-i", kind: String.self, usage: "Read an image or PDF instead of capturing the screen (\"-\" for standard input)")
     let saveImageOption = parser.add(option: "--save-image", shortName: "-s", kind: String.self, usage: "Save captured screenshot to specified path")
     let clipboardOption = parser.add(option: "--clipboard", shortName: "-c", kind: Bool.self, usage: "Read the image already on the clipboard instead of capturing the screen")
     let noCopyOption = parser.add(option: "--no-copy", kind: Bool.self, usage: "Print the result without putting it on the clipboard")
